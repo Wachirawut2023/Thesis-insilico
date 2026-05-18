@@ -1,0 +1,68 @@
+# Curated functional anchor residues per target.
+# Format:
+#   <GENE>:
+#     chain: A         # default
+#     anchors:         # list of residue ids; distance from Cys-Sγ to nearest of these = functional_proximity
+#       - 395          # by integer (default chain)
+#       - {chain: B, resi: 100}
+#     description: free text
+#
+# When a target has no curated anchors (scaffolds / readers without known small-molecule pocket),
+# functional_proximity falls back to centroid distance to the bound reference ligand if present in the PDB,
+# else to the geometric centre of the largest predicted pocket (Stage 3).
+
+METTL3:
+  chain: A
+  anchors: [395, 396, 397, 398, 511, 538, 549]
+  description: SAM/SAH pocket; DPPW catalytic motif (D395-P396-P397-W398), E494 catalytic.
+
+METTL14:
+  chain: B
+  anchors: [298, 299, 300]
+  description: heterodimer interface with METTL3; pseudo-MTase.
+
+METTL16:
+  chain: A
+  anchors: [184, 185, 186, 187]
+  description: NPPF catalytic motif.
+
+FTO:
+  chain: A
+  anchors: [231, 233, 307, 322]
+  description: Fe(II) facial triad H231/D233/H307; R322 substrate.
+
+ALKBH5:
+  chain: A
+  anchors: [204, 206, 266]
+  description: Fe(II) facial triad H204/D206/H266.
+
+YTHDF1:
+  chain: A
+  anchors: [411, 465, 470]
+  description: aromatic cage W411/W465/W470 (numbering per 4RCJ).
+
+YTHDF2:
+  chain: A
+  anchors: [432, 486, 491]
+  description: aromatic cage equivalent.
+
+YTHDC1:
+  chain: A
+  anchors: [377, 428, 432]
+  description: aromatic cage W377/W428/L439 (numbering per 4R3I).
+
+# Controls
+PIN1:
+  chain: A
+  anchors: [113]
+  description: Cys113 catalytic; known As(III) target.
+
+TXN1:
+  chain: A
+  anchors: [32, 35]
+  description: CGPC active site Cys32/Cys35.
+
+GAPDH:
+  chain: A
+  anchors: [152]
+  description: catalytic Cys152.
