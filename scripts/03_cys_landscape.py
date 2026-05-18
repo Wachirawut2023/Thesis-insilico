@@ -95,7 +95,12 @@ def _sasa_map(pdb: Path) -> dict[tuple[str, int, str], float]:
         return {}
     try:
         structure = freesasa.Structure(str(pdb))
-        result = freesasa.Calc().calculate(structure)
+        # API changed in freesasa>=2.2: module-level freesasa.calc() replaces
+        # freesasa.Calc().calculate() class method.
+        if hasattr(freesasa, "calc"):
+            result = freesasa.calc(structure)
+        else:
+            result = freesasa.Calc().calculate(structure)
     except Exception as exc:
         LOG.warning("freesasa failed on %s: %s", pdb.name, exc)
         return {}
