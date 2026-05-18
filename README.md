@@ -74,5 +74,18 @@ controls — known As(III) targets) and SH3-SRC (negative control).
 
 ## Compute
 
-CPU-only workload. AWS `c7i.4xlarge` (16 vCPU) or equivalent recommended; total
-estimated cost ~$30–$120 for the full panel.
+CPU-only workload. Cheapest option is **Hetzner Cloud CCX33** (8 dedicated
+AMD EPYC vCPU, 32 GB RAM) at €0.073/hr → total cost **~€0.50–€3** for the
+full panel, ~3–6 hr wall time.
+
+Full provisioning runbook in [`infra/hetzner/README.md`](infra/hetzner/README.md):
+
+```bash
+cd infra/hetzner
+./provision.sh                 # creates server with cloud-init bootstrap
+ssh root@<ip>                  # then: cd /root/Thesis-insilico && make all
+./fetch-results.sh <ip>        # pull TSVs/figures back to laptop
+hcloud server delete as-m6a    # stop billing
+```
+
+AWS equivalent: `c7i.4xlarge` on-demand ~$50–$80; spot ~$20–$30.
