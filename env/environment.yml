@@ -34,5 +34,3 @@ dependencies:
   - requests
   - pyyaml
   - click
-  - pip:
-      - autodocktools-prepare-py3k
