@@ -1,37 +1,38 @@
 #!/usr/bin/env bash
-# Build As(OH)3 PDBQT for AutoDock Vina. Tries SMILES first (most reliable),
-# falls back to as3.mol2 if SMILES path fails.
+# Build As(OH)3 PDBQT for AutoDock Vina by writing it directly.
 #
-# Vina has no native As atom type — we remap to Mg in the PDBQT (metal-like
-# vdW radius). Vina ΔG values are RELATIVE ranking only; the primary readout
-# for inhibition inference is geometric covalent docking in scripts/06.
+# OpenBabel can't reliably handle arsenic:
+#   - SMILES route: Gasteiger charge model has no parameters for As
+#   - MOL2 route: 'As' isn't a SYBYL atom type
+# so we skip conversion and emit the PDBQT verbatim. As is remapped to
+# Mg in the AutoDock atom-type column because Vina's default force field
+# has no As parameters; Vina ΔG becomes a relative-ranking proxy only.
+# Primary readout for inhibition inference is the geometric covalent
+# docking in scripts/06_dock_covalent.py.
+#
+# Geometry: As-O 1.78 A, O-As-O 94 deg (trigonal pyramidal, C3v).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-OUT=as3.pdbqt
-rm -f "$OUT"
+cat > as3.pdbqt <<'EOF'
+REMARK  As(OH)3 arsenous acid; As remapped to Mg for Vina FF compatibility
+REMARK  Geometry: As-O 1.78 A, O-As-O 94 deg (trigonal pyramidal)
+ROOT
+HETATM    1  Mg  LIG A   1       0.000   0.000   0.000  1.00  0.00     0.450 Mg
+HETATM    2  O1  LIG A   1       1.301   0.000  -1.214  1.00  0.00    -0.500 OA
+HETATM    3  O2  LIG A   1      -0.651   1.127  -1.214  1.00  0.00    -0.500 OA
+HETATM    4  O3  LIG A   1      -0.651  -1.127  -1.214  1.00  0.00    -0.500 OA
+HETATM    5  H1  LIG A   1       2.002   0.000  -1.869  1.00  0.00     0.350 HD
+HETATM    6  H2  LIG A   1      -1.001   1.733  -1.869  1.00  0.00     0.350 HD
+HETATM    7  H3  LIG A   1      -1.001  -1.733  -1.869  1.00  0.00     0.350 HD
+ENDROOT
+TORSDOF 0
+EOF
 
-# Route 1: SMILES -> 3D -> PDBQT
-if obabel -:"O[As](O)O" -O "$OUT" --gen3d --partialcharge gasteiger 2>/tmp/obabel.log; then
-  if [ -s "$OUT" ]; then
-    echo "[prepare_as3] generated $OUT from SMILES"
-  fi
-fi
-
-# Route 2: fallback to mol2 if SMILES route produced nothing
-if [ ! -s "$OUT" ]; then
-  echo "[prepare_as3] SMILES route empty, trying as3.mol2"
-  cat /tmp/obabel.log 2>/dev/null || true
-  obabel as3.mol2 -O "$OUT" --partialcharge gasteiger
-fi
-
-# Patch As -> Mg for Vina compatibility (Vina parameter file lacks As).
-sed -i 's/\bAs\b/Mg/g' "$OUT"
-
-if [ -s "$OUT" ]; then
-  echo "[prepare_as3] wrote $OUT ($(wc -l < "$OUT") lines)"
-  grep -E '^(ATOM|HETATM)' "$OUT" | head -10
-else
-  echo "[prepare_as3] ERROR: $OUT is empty after both routes"
+if [ ! -s as3.pdbqt ]; then
+  echo "[prepare_as3] ERROR: write failed"
   exit 1
 fi
+
+echo "[prepare_as3] wrote as3.pdbqt ($(wc -l < as3.pdbqt) lines)"
+head -20 as3.pdbqt
