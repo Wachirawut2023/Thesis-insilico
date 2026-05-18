@@ -41,20 +41,45 @@ gcloud compute instances delete as-m6a --zone=us-central1-a --quiet
    Note the **Project ID** (not the display name).
 4. Make sure billing is linked: **Billing → Account management → Link account**.
 
-## 2. Install + auth the gcloud CLI (one-time, ~2 min)
+## 2. Pick a connection method
+
+You have three options. Pick whichever feels easiest.
+
+### 2A. Cloud Shell (no local install — recommended)
+
+A free Linux terminal inside the browser, with `gcloud` pre-installed and a
+5 GB persistent home directory.
+
+1. https://console.cloud.google.com → click the terminal icon (`>_`) top-right.
+2. From Cloud Shell:
+   ```bash
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud services enable compute.googleapis.com
+   git clone https://github.com/Wachirawut2023/Thesis-insilico.git
+   cd Thesis-insilico && git checkout claude/arsenic-m6a-inhibition-model-6pwWS
+   cd infra/gcp
+   ```
+
+Everything below works identically from Cloud Shell or from a laptop with
+`gcloud` installed.
+
+### 2B. Local `gcloud` CLI
 
 ```bash
 # macOS
 brew install --cask google-cloud-sdk
+# Linux: https://cloud.google.com/sdk/docs/install-sdk
 
-# Linux  (Debian/Ubuntu): see https://cloud.google.com/sdk/docs/install-sdk
-```
-
-```bash
-gcloud auth login                              # browser-based OAuth
+gcloud auth login
 gcloud config set project YOUR_PROJECT_ID
-gcloud services enable compute.googleapis.com  # one-time, ~30 s
+gcloud services enable compute.googleapis.com
 ```
+
+### 2C. Pure Console UI (no terminal at all)
+
+You can create the VM by clicking through the Console — see
+[Manual VM creation](#manual-vm-creation-console-only) at the bottom of this
+file. Then use **SSH-in-browser** (Option 5A below) to connect.
 
 ## 3. Provision the instance
 
@@ -94,13 +119,28 @@ Done when you see `[bootstrap] done <timestamp>` (~5–10 min).
 If `tail` exits with "file not found" the script hasn't started yet — wait
 30 s and retry.
 
-## 5. Run the pipeline
+## 5. Connect and run the pipeline
+
+Two equivalent ways in:
+
+### 5A. SSH-in-browser (no CLI needed)
+
+1. Console → **Compute Engine → VM instances**
+2. Click the **SSH** button on the `as-m6a` row → opens a browser terminal
+3. You're logged in as your Google username
+
+### 5B. `gcloud compute ssh` (from Cloud Shell or local laptop)
 
 ```bash
 gcloud compute ssh as-m6a --zone=us-central1-a
-sudo -i                                        # bootstrap installs to /opt/, so use root
+```
+
+### Then, regardless of how you connected:
+
+```bash
+sudo -i                                        # bootstrap installs to /opt/
 cd /opt/Thesis-insilico
-tmux new -s pipeline                           # detach Ctrl-b d; reattach `tmux a`
+tmux new -s pipeline                           # Ctrl-b d to detach; `tmux a` to reattach
 
 # Recommended: smoke test first (3 targets, ~30 min)
 source /opt/miniforge/etc/profile.d/conda.sh && conda activate arsenic-m6a
@@ -110,16 +150,43 @@ make smoke
 bash infra/gcp/run-pipeline.sh
 ```
 
-Detach tmux and close your laptop — it runs unattended.
+Detach tmux and close the browser tab / laptop — the pipeline keeps running.
+Re-attach later with the SSH button or `gcloud compute ssh`, then `tmux a -t pipeline`.
 
 ## 6. Pull results back
 
-From your laptop:
+Three ways, pick whichever fits your connection method:
+
+### 6A. SSH-in-browser — click to download
+
+In the browser SSH window, click the **gear icon (⚙)** at top-right →
+**Download file** → paste the path, e.g.:
+
+```
+/opt/Thesis-insilico/results/REPORT.md
+/opt/Thesis-insilico/results/composite_ranking.tsv
+/opt/Thesis-insilico/results/figures/family_heatmap.png
+```
+
+Each download goes straight to your browser's downloads folder. Best for
+grabbing a handful of small files.
+
+### 6B. Cloud Shell — `fetch-results.sh` + `cloudshell download`
+
+```bash
+# In Cloud Shell:
+cd ~/Thesis-insilico/infra/gcp
+./fetch-results.sh
+tar czf results.tar.gz results-pulled/
+cloudshell download results.tar.gz       # opens a download dialog in your browser
+```
+
+### 6C. Local gcloud — same `fetch-results.sh`
 
 ```bash
 cd infra/gcp
 ./fetch-results.sh
-# -> results-pulled/<timestamp>/results/  with TSVs, REPORT.md, figures, logs
+# -> ./results-pulled/<timestamp>/results/ on your laptop
 ```
 
 ## 7. Destroy — STOP BILLING
@@ -206,6 +273,34 @@ If you ever want to switch to spot: add `--provisioning-model=SPOT
 in `provision.sh`. The pipeline writes per-protein outputs, so it's
 checkpoint-friendly anyway.
 
+## Manual VM creation (Console only)
+
+If you'd rather click through the GCP Console than run `provision.sh`:
+
+1. **Compute Engine → VM instances → CREATE INSTANCE**
+2. **Name**: `as-m6a`
+3. **Region**: `us-central1`, **Zone**: `us-central1-a`
+4. **Machine configuration**:
+   - Series: **N2D**
+   - Machine type: **n2d-standard-8** (8 vCPU, 32 GB memory)
+5. **Boot disk → Change**:
+   - Operating system: **Ubuntu**
+   - Version: **Ubuntu 24.04 LTS Minimal (amd64)**
+   - Boot disk type: **Balanced persistent disk**
+   - Size: **50 GB**
+6. **Advanced options → Networking**: leave defaults (default VPC, ephemeral
+   external IP). SSH is allowed by default via IAP/Console.
+7. **Advanced options → Management → Metadata → Add item**:
+   - Key: `user-data`
+   - Value: paste the **entire contents** of `infra/gcp/cloud-init.yaml`
+     (open the file, copy everything starting from `#cloud-config`)
+8. Click **CREATE**.
+
+Wait 5–10 min for cloud-init to finish. Track progress: click **SSH** on the
+instance row in the Console, then `tail -f /var/log/bootstrap.log`.
+
+Once `[bootstrap] done` shows up, jump to [step 5](#5-connect-and-run-the-pipeline).
+
 ## Tear-down checklist
 
 ```bash
@@ -217,3 +312,6 @@ gcloud compute addresses list                  # any reserved static IPs?
 
 The instance creation here doesn't reserve a static IP or create extra disks,
 so a single `instances delete` is normally enough to stop all billing.
+
+You can also tear down from the Console: **Compute Engine → VM instances →**
+check the box next to `as-m6a` **→ DELETE** at the top.
