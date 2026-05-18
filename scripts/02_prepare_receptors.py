@@ -47,11 +47,12 @@ def _strip_pdb(src: Path, dst: Path) -> None:
     dst.write_text("".join(lines_out))
 
 
-def _run(cmd: list[str]) -> bool:
+def _run(cmd: list[str], log_full_stderr: bool = False) -> bool:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if r.returncode != 0:
-            LOG.warning("cmd failed: %s\nstderr: %s", " ".join(cmd), r.stderr[-500:])
+            stderr = r.stderr if log_full_stderr else r.stderr[-500:]
+            LOG.warning("cmd failed: %s\nstderr: %s", " ".join(cmd), stderr)
             return False
         return True
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
@@ -67,9 +68,11 @@ def _protonate(stripped: Path, pqr: Path) -> bool:
             "--with-ph=7.4",
             "--titration-state-method=propka",
             "--keep-chain",
+            "--drop-water",
             str(stripped),
             str(pqr),
-        ]
+        ],
+        log_full_stderr=True,
     )
 
 
@@ -102,8 +105,11 @@ def main() -> int:
         pdbqt = PREP_DIR / f"{t.gene}.pdbqt"
         _strip_pdb(src, stripped)
         if not _protonate(stripped, pqr):
-            LOG.warning("protonation failed for %s; falling back to obabel -p", t.gene)
-            _run(["obabel", str(stripped), "-O", str(pqr), "-p", "7.4"])
+            LOG.warning("pdb2pqr30 failed for %s; falling back to obabel -p (no pKa)", t.gene)
+            if _run(["obabel", str(stripped), "-O", str(pqr), "-p", "7.4"]):
+                LOG.info("obabel fallback wrote %s", pqr.name)
+            else:
+                LOG.warning("obabel fallback also failed for %s; will use unprotonated PDB", t.gene)
         if not _to_pdbqt(pqr if pqr.exists() else stripped, pdbqt):
             LOG.error("PDBQT conversion failed for %s", t.gene)
             continue

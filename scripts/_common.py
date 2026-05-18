@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -62,6 +63,11 @@ def load_targets(path: Path = TARGETS_TSV) -> list[Target]:
                     notes=row.get("notes", ""),
                 )
             )
+    # Honour SMOKE_GENES env var: comma-separated gene names to keep.
+    smoke = os.environ.get("SMOKE_GENES", "").strip()
+    if smoke:
+        keep = {g.strip() for g in smoke.split(",") if g.strip()}
+        targets = [t for t in targets if t.gene in keep]
     return targets
 
 
