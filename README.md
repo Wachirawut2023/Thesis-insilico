@@ -74,18 +74,22 @@ controls — known As(III) targets) and SH3-SRC (negative control).
 
 ## Compute
 
-CPU-only workload. Cheapest option is **Hetzner Cloud CCX33** (8 dedicated
-AMD EPYC vCPU, 32 GB RAM) at €0.073/hr → total cost **~€0.50–€3** for the
-full panel, ~3–6 hr wall time.
+CPU-only workload. Two provisioning paths are wired up:
 
-Full provisioning runbook in [`infra/hetzner/README.md`](infra/hetzner/README.md):
+**GCP (recommended — covered by $300 free trial)** — `n2d-standard-8`,
+8 AMD EPYC vCPU, 32 GB RAM, $0.388/hr → ~$2.50 / run, ~3–6 hr wall time.
+Runbook: [`infra/gcp/README.md`](infra/gcp/README.md).
 
 ```bash
-cd infra/hetzner
-./provision.sh                 # creates server with cloud-init bootstrap
-ssh root@<ip>                  # then: cd /root/Thesis-insilico && make all
-./fetch-results.sh <ip>        # pull TSVs/figures back to laptop
-hcloud server delete as-m6a    # stop billing
+gcloud auth login && gcloud config set project YOUR_PROJECT_ID
+cd infra/gcp
+./provision.sh
+gcloud compute ssh as-m6a --zone=us-central1-a
+# then on the server: cd /opt/Thesis-insilico && bash infra/gcp/run-pipeline.sh
+./fetch-results.sh
+gcloud compute instances delete as-m6a --zone=us-central1-a --quiet
 ```
 
-AWS equivalent: `c7i.4xlarge` on-demand ~$50–$80; spot ~$20–$30.
+**Hetzner (cheapest list price, no free credit)** — `CCX33`, 8 dedicated
+AMD EPYC vCPU, €0.073/hr → ~€0.50 / run. Runbook:
+[`infra/hetzner/README.md`](infra/hetzner/README.md).
