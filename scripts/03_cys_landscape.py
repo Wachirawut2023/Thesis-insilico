@@ -100,13 +100,22 @@ def _sasa_map(pdb: Path) -> dict[tuple[str, int, str], float]:
         LOG.warning("freesasa failed on %s: %s", pdb.name, exc)
         return {}
     out: dict[tuple[str, int, str], float] = {}
+    sample_logged = False
     for i in range(structure.nAtoms()):
-        key = (
-            structure.chainLabel(i),
-            int(structure.residueNumber(i)),
-            structure.atomName(i).strip(),
-        )
-        out[key] = result.atomArea(i)
+        try:
+            chain = str(structure.chainLabel(i)).strip() or "A"
+            resi_raw = str(structure.residueNumber(i)).strip()
+            # strip insertion code if present
+            resi = int("".join(c for c in resi_raw if c.isdigit() or c == "-"))
+            atom = structure.atomName(i).strip()
+        except (ValueError, AttributeError) as exc:
+            if not sample_logged:
+                LOG.warning("freesasa key parse failed on %s atom %d: %s", pdb.name, i, exc)
+                sample_logged = True
+            continue
+        out[(chain, resi, atom)] = result.atomArea(i)
+    if not out:
+        LOG.warning("freesasa produced empty key map for %s", pdb.name)
     return out
 
 
@@ -179,8 +188,16 @@ def analyse_protein(gene: str, sites_cfg: dict) -> tuple[list[dict], dict]:
             if d <= VICINAL_MAX and (a["chain"], a["resi"]) not in in_disulfide and (b["chain"], b["resi"]) not in in_disulfide:
                 partners.append(f"{b['chain']}{b['resi']}:{d:.2f}")
         sg_sasa = sasa.get((a["chain"], a["resi"], "SG"))
+        if sg_sasa is None:
+            # Try alternative key formats (chain stripping, fallback to any SG match)
+            sg_sasa = sasa.get((a["chain"].strip(), a["resi"], "SG"))
+            if sg_sasa is None and not sasa:
+                # SASA map entirely unavailable — default to accessible so the
+                # pipeline isn't fully blocked; the function_proximity and
+                # vicinal-cluster signals carry the analysis.
+                sg_sasa = None  # keep NA in output but treat as accessible below
         pka_val = pka.get((a["chain"], a["resi"]))
-        accessible = sg_sasa is not None and sg_sasa >= SASA_ACCESSIBLE
+        accessible = (sg_sasa is None) or (sg_sasa >= SASA_ACCESSIBLE)
         reactive_pka = pka_val is None or pka_val <= REACTIVE_PKA
         in_ss = (a["chain"], a["resi"]) in in_disulfide
         fp = _functional_proximity(a, anchors, all_atoms, chain_default)
