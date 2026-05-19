@@ -20,8 +20,12 @@ KEEP_HETATMS = {"SAM", "SAH", "FE", "FE2", "AKG", "2OG", "M6A", "6MA", "MG", "ZN
 
 
 def _strip_pdb(src: Path, dst: Path) -> None:
-    """Keep ATOM records and whitelisted HETATM cofactors."""
-    seen_alts: dict[tuple[str, str, int, str], str] = {}
+    """Keep ATOM records and whitelisted HETATM cofactors. Deduplicate
+    alt-locs by keeping the first occurrence of each (chain, resn, resi,
+    atom) — otherwise both 'A' and 'B' altlocs leak through and look
+    like duplicate atoms with spurious vicinal pairs (e.g. GAPDH 1U8F
+    Cys152 had two SG records 2.65 Å apart)."""
+    seen_atoms: set[tuple[str, str, int, str]] = set()
     lines_out: list[str] = []
     with src.open() as fh:
         for line in fh:
@@ -30,18 +34,20 @@ def _strip_pdb(src: Path, dst: Path) -> None:
                 if tag in ("HEADER", "TITLE ", "REMARK", "SEQRES", "TER   ", "END   "):
                     lines_out.append(line)
                 continue
-            altloc = line[16]
             resn = line[17:20].strip()
             chain = line[21]
-            resi = int(line[22:26])
+            try:
+                resi = int(line[22:26])
+            except ValueError:
+                continue
             atom = line[12:16].strip()
             if tag == "HETATM" and resn not in KEEP_HETATMS and resn != "MSE":
                 continue
-            if altloc not in (" ", "A"):
-                key = (chain, resn, resi, atom)
-                if key in seen_alts:
-                    continue
-                seen_alts[key] = altloc
+            key = (chain, resn, resi, atom)
+            if key in seen_atoms:
+                continue
+            seen_atoms.add(key)
+            # Blank the altloc column so downstream tools see a single conformer.
             line = line[:16] + " " + line[17:]
             lines_out.append(line)
     dst.write_text("".join(lines_out))

@@ -147,15 +147,34 @@ def _pka_map(propka_log: Path) -> dict[tuple[str, int], float]:
 
 
 def _functional_proximity(sg: dict, anchors: list, all_atoms: list[dict], chain: str) -> float | None:
+    """Minimum Sγ distance to any curated anchor residue.
+
+    Integer anchors (e.g. `[152]`) match any chain — handles homo-oligomeric
+    structures like GAPDH 1U8F (chains O/P/Q/R) where the catalytic Cys152
+    exists in every subunit but our default chain 'A' would miss them all.
+
+    Dict anchors with explicit `chain:` require exact chain+resi match
+    (use this when the structure is a hetero-complex and the anchor must
+    live on a specific subunit, e.g. METTL14 in the METTL3/14 dimer)."""
     if not anchors:
         return None
-    anchor_keys: set[tuple[str, int]] = set()
+    anchor_atoms: list[dict] = []
     for a in anchors:
         if isinstance(a, int):
-            anchor_keys.add((chain, a))
+            anchor_atoms.extend(at for at in all_atoms if at["resi"] == a)
         elif isinstance(a, dict):
-            anchor_keys.add((a.get("chain", chain), int(a["resi"])))
-    anchor_atoms = [at for at in all_atoms if (at["chain"], at["resi"]) in anchor_keys]
+            target_chain = a.get("chain")
+            try:
+                target_resi = int(a["resi"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if target_chain:
+                anchor_atoms.extend(
+                    at for at in all_atoms
+                    if at["chain"] == target_chain and at["resi"] == target_resi
+                )
+            else:
+                anchor_atoms.extend(at for at in all_atoms if at["resi"] == target_resi)
     if not anchor_atoms:
         return None
     return min(_dist(sg, at) for at in anchor_atoms)
