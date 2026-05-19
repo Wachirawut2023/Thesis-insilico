@@ -202,6 +202,83 @@ gcloud compute instances list
 or stop the instance when done. Stopping (`instances stop`) halts vCPU billing
 but you still pay for the boot disk (~$2/mo).
 
+## Re-installing the VM while preserving your data
+
+If you need a fresh VM (different machine type, fresh OS, recovering from a
+broken state) but want to keep your `results/`, `data/prepared/`, and ligand
+artifacts, use a GCS bucket as the persistent layer between VM lifecycles.
+
+The pipeline regenerates everything in `data/` from public PDB/AlphaFold in
+~10 min, so the only thing you can't recreate cheaply is `results/` (your
+actual scientific output). The backup script saves all three.
+
+**Cost**: ~$0.02/GB-month for GCS standard storage. A typical run produces
+<200 MB so the persistent storage is rounding error.
+
+### Step 1 — back up the current VM (before deleting it)
+
+On the existing VM:
+
+```bash
+cd /opt/Thesis-insilico
+git pull                                          # make sure backup scripts are present
+bash infra/gcp/backup-to-gcs.sh
+```
+
+The script:
+- creates a GCS bucket `gs://<PROJECT>-thesis-as-m6a-data` if it doesn't exist
+- tars `results/`, `data/prepared/`, and `ligands/as3.pdbqt`
+- uploads as both `thesis-backup-<timestamp>.tar.gz` and `latest.tar.gz`
+
+### Step 2 — delete the old VM
+
+```bash
+gcloud compute instances delete as-m6a --zone=us-central1-a --quiet
+```
+
+Billing for the VM stops immediately. The GCS bucket persists.
+
+### Step 3 — create the new VM
+
+Same `provision.sh` as before, or use the Console UI:
+
+```bash
+cd infra/gcp
+./provision.sh                                    # ~30 s
+# wait ~5–10 min for cloud-init
+gcloud compute ssh as-m6a --zone=us-central1-a -- tail -f /var/log/bootstrap.log
+# wait for [bootstrap] done
+```
+
+### Step 4 — restore your data on the new VM
+
+```bash
+gcloud compute ssh as-m6a --zone=us-central1-a
+sudo -i
+cd /opt/Thesis-insilico
+bash infra/gcp/restore-from-gcs.sh
+```
+
+You'll find `results/` and `data/prepared/` populated as they were before the
+old VM was deleted. The conda env was rebuilt fresh by cloud-init, so you have
+a clean OS + your existing outputs.
+
+### Optional — pick a specific backup instead of `latest`
+
+```bash
+# list available backups
+gsutil ls gs://$(gcloud config get-value project)-thesis-as-m6a-data/
+
+# restore a specific one
+ARCHIVE=thesis-backup-20260518_153022.tar.gz bash infra/gcp/restore-from-gcs.sh
+```
+
+### Tear down the GCS bucket if you don't need it any more
+
+```bash
+gsutil -m rm -r gs://$(gcloud config get-value project)-thesis-as-m6a-data
+```
+
 ## Machine type cheat-sheet (8 vCPU / 32 GB tier)
 
 | Type | CPU | $/hr (us-central1) | 6 hr cost | Notes |
