@@ -25,10 +25,12 @@ RANK_TSV = RESULTS / "composite_ranking.tsv"
 HEATMAP_PNG = RESULTS / "figures" / "family_heatmap.png"
 REPORT_MD = RESULTS / "REPORT.md"
 
-W_COV = 1.0
-W_VICINAL = 0.4
+W_COV = 0.6           # covalent score weight (down from 1.0; sign too volatile)
+W_VICINAL = 0.25      # vicinal cluster score weight (down from 0.4; capped below)
+VICINAL_CAP = 5.0     # avoid letting Cys-rich scaffolds dominate
 W_VINA = -0.25
-W_PROX_BONUS = 0.5
+W_PROX_BONUS = 3.0    # functional proximity is the biology-relevant signal (up from 0.5)
+W_REACTIVE_AT_FUNC = 2.0   # explicit bonus for "reactive Cys at active site"
 
 
 def _load_tsv(path: Path) -> list[dict]:
@@ -89,11 +91,14 @@ def main() -> int:
         prox_bonus = 0.0
         if prox is not None and prox <= 6.0:
             prox_bonus = (6.0 - prox) / 6.0  # 0..1
+        vicinal_capped = min(vicinal, VICINAL_CAP)
+        reactive_at_func = 1.0 if (prox is not None and prox <= 6.0) else 0.0
         composite = (
             W_COV * (cov_best or 0.0)
-            + W_VICINAL * vicinal
+            + W_VICINAL * vicinal_capped
             + (W_VINA * vina if vina is not None else 0.0)
             + W_PROX_BONUS * prox_bonus
+            + W_REACTIVE_AT_FUNC * reactive_at_func
         )
         rows.append(
             {
@@ -108,7 +113,7 @@ def main() -> int:
                 "best_covalent_score": f"{cov_best:.3f}" if cov_best is not None else "NA",
                 "min_func_proximity_A": f"{prox:.2f}" if prox is not None else "NA",
                 "composite_score": round(composite, 3),
-                "inference_tier": _tier(prox, cov_best),
+                "inference_tier": _tier(prox, cov_best, int(s.get("n_reactive", 0) or 0)),
             }
         )
 
@@ -138,9 +143,20 @@ def main() -> int:
     return 0
 
 
-def _tier(prox: float | None, cov: float | None) -> str:
-    """Map (functional proximity, covalent score) to a qualitative inference tier."""
-    if cov is None or cov <= 0:
+def _tier(prox: float | None, cov: float | None, n_reactive: int = 0) -> str:
+    """Qualitative inference tier.
+
+    Anchored on functional proximity (the biologically interpretable signal)
+    rather than covalent_score sign (which is volatile near zero — a slight
+    func-proximity penalty pushes it negative even when binding is plausible).
+
+      likely_inhibitory:    reactive Cys exists with Sγ ≤ 6 Å from active site
+      possibly_allosteric:  reactive Cys exists 6 < Sγ ≤ 12 Å from active site
+      binding_only:         reactive Cys present but none near a curated anchor
+                            (either no anchor curated, or all far from active)
+      no_binding:           no reactive Cys at all
+    """
+    if n_reactive <= 0:
         return "no_binding"
     if prox is None:
         return "binding_only"
