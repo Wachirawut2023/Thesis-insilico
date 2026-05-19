@@ -86,7 +86,12 @@ def _pocket_centroid(pocket_pdb: Path) -> tuple[float, float, float] | None:
 
 
 def _read_cys_clusters(gene: str) -> list[tuple[float, float, float, str]]:
-    """Build cluster centroids from reactive Cys with >=1 vicinal partner."""
+    """Reactive Cys to anchor docking boxes on. A Cys qualifies if either:
+      - it has ≥1 vicinal Cys partner (bi/tridentate anchor candidate), OR
+      - its Sγ is within FUNC_PROX_MAX of a curated active-site residue
+        (monodentate anchor at a known catalytic / RNA-binding site).
+    """
+    FUNC_PROX_MAX = 8.0
     if not CYS_TSV.exists():
         return []
     pdb = PREP_DIR / f"{gene}.clean.pdb"
@@ -109,7 +114,15 @@ def _read_cys_clusters(gene: str) -> list[tuple[float, float, float, str]]:
         for row in reader:
             if row["gene"] != gene or row["reactive"] != "Y":
                 continue
-            if int(row["n_vicinal_partners"]) < 1:
+            n_vic = int(row["n_vicinal_partners"])
+            fp_str = row.get("functional_proximity_A", "NA")
+            try:
+                fp = float(fp_str) if fp_str != "NA" else None
+            except ValueError:
+                fp = None
+            has_partner = n_vic >= 1
+            near_active = fp is not None and fp <= FUNC_PROX_MAX
+            if not has_partner and not near_active:
                 continue
             key = (row["chain"], int(row["resi"]))
             if key not in coords:

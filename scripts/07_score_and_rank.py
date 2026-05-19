@@ -67,11 +67,14 @@ def main() -> int:
     min_func_prox: dict[str, float] = {}
     sum_cov: dict[str, float] = defaultdict(float)
     n_cov: dict[str, int] = defaultdict(int)
+    best_mode: dict[str, str] = {}
     for r in cov:
         s = _safe_float(r["covalent_score"])
         if s is None:
             continue
-        best_cov[r["gene"]] = max(best_cov[r["gene"]], s)
+        if s > best_cov[r["gene"]]:
+            best_cov[r["gene"]] = s
+            best_mode[r["gene"]] = r.get("binding_mode", "")
         sum_cov[r["gene"]] += s
         n_cov[r["gene"]] += 1
         fp = _safe_float(r["functional_proximity_A"])
@@ -111,6 +114,7 @@ def main() -> int:
                 "vicinal_score": s.get("vicinal_score", ""),
                 "best_vina_dG": f"{vina:.3f}" if vina is not None else "NA",
                 "best_covalent_score": f"{cov_best:.3f}" if cov_best is not None else "NA",
+                "best_binding_mode": best_mode.get(gene, "NA"),
                 "min_func_proximity_A": f"{prox:.2f}" if prox is not None else "NA",
                 "composite_score": round(composite, 3),
                 "inference_tier": _tier(prox, cov_best, int(s.get("n_reactive", 0) or 0)),
@@ -131,6 +135,7 @@ def main() -> int:
             "vicinal_score",
             "best_vina_dG",
             "best_covalent_score",
+            "best_binding_mode",
             "min_func_proximity_A",
             "composite_score",
             "inference_tier",
@@ -227,12 +232,13 @@ def _write_report(rows: list[dict]) -> None:
     out.append("")
     out.append("## Top 5 candidates (any family)")
     out.append("")
-    out.append("| Gene | Family | Composite | Best covalent | Min func.prox (Å) | Tier |")
-    out.append("|---|---|---|---|---|---|")
+    out.append("| Gene | Family | Composite | Best covalent | Mode | Min func.prox (Å) | Tier |")
+    out.append("|---|---|---|---|---|---|---|")
     for r in top:
         out.append(
             f"| {r['gene']} | {r['family']} | {r['composite_score']} | "
-            f"{r['best_covalent_score']} | {r['min_func_proximity_A']} | {r['inference_tier']} |"
+            f"{r['best_covalent_score']} | {r['best_binding_mode']} | "
+            f"{r['min_func_proximity_A']} | {r['inference_tier']} |"
         )
     out.append("")
     for fam in ("writer", "eraser", "reader"):
@@ -241,7 +247,7 @@ def _write_report(rows: list[dict]) -> None:
         for r in by_family.get(fam, []):
             out.append(
                 f"- **{r['gene']}**: composite={r['composite_score']}, "
-                f"covalent={r['best_covalent_score']}, "
+                f"covalent={r['best_covalent_score']} ({r['best_binding_mode']}), "
                 f"reactive Cys={r['n_reactive']}, "
                 f"func.prox={r['min_func_proximity_A']} Å — *{r['inference_tier']}*"
             )
