@@ -63,6 +63,49 @@ TXN1:
   description: CGPC active site Cys32/Cys35.
 
 GAPDH:
-  chain: A
   anchors: [152]
-  description: catalytic Cys152.
+  description: catalytic Cys152 (anchored chain-agnostic — 1U8F is a tetramer O/P/Q/R).
+
+# Writers (curated for the polish round; anchors below are best-effort
+# from conserved domain motifs in UniProt + literature; AlphaFold-model
+# numbering matches the UniProt canonical sequence)
+
+CBLL1:
+  anchors: [109, 112, 126, 129]
+  description: RING E3 ligase Zn-binding Cys cluster (CxxC...CxxC). Approximate.
+
+# Readers — extend YTHDFx aromatic cage curation
+YTHDF3:
+  anchors: [438, 492, 497]
+  description: aromatic cage W/W/W conserved with YTHDF1/2 (AF model numbering).
+
+YTHDC2:
+  anchors: [1375, 1429]
+  description: C-terminal YTH domain aromatic cage residues (AF model). Approximate.
+
+IGF2BP1:
+  anchors: [414, 415, 416, 417, 492, 493, 494, 495]
+  description: KH3 and KH4 GXXG RNA-binding loops bracketed; approximate.
+
+IGF2BP2:
+  anchors: [411, 412, 413, 414, 489, 490, 491, 492]
+  description: KH3/KH4 GXXG loops (paralog of IGF2BP1); approximate.
+
+IGF2BP3:
+  anchors: [413, 414, 415, 416, 491, 492, 493, 494]
+  description: KH3/KH4 GXXG loops; approximate.
+
+HNRNPA2B1:
+  anchors: [56, 57, 58, 59, 60, 61, 62, 63, 64, 148, 149, 150, 151, 152, 153, 154, 155, 156]
+  description: RRM1 and RRM2 RNP1 octamers — RNA-binding β3 strand residues. Approximate.
+
+HNRNPC:
+  anchors: [57, 58, 59, 60, 61, 62, 63, 64]
+  description: RRM RNP1 RNA-binding residues; approximate.
+
+# Note: WTAP, VIRMA, ZC3H13, RBM15, RBM15B are scaffold / RNA-recruiter
+# proteins without single critical catalytic residues. Their func.prox
+# remaining NA in the ranking is *biologically correct* — these are
+# interaction-surface proteins, and arsenic binding to a surface Cys on
+# a scaffold has ambiguous functional consequences without further
+# experimental work. They stay in 'binding_only' tier by design.

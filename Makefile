@@ -1,4 +1,4 @@
-.PHONY: help env ligand fetch prep cys pockets dock-nc dock-cov rank all smoke clean
+.PHONY: help env ligand fetch prep cys pockets dock-nc dock-cov rank viz all smoke clean
 
 PY := python
 SCRIPTS := scripts
@@ -14,7 +14,8 @@ help:
 	@echo "  dock-nc   non-covalent Vina docking"
 	@echo "  dock-cov  geometric covalent docking (primary readout)"
 	@echo "  rank      composite ranking + heatmap + report"
-	@echo "  all       fetch -> prep -> cys -> pockets -> dock-nc -> dock-cov -> rank"
+	@echo "  viz       PyMOL renders (.pse/.png/.pml) of top 5 hits"
+	@echo "  all       fetch -> prep -> cys -> pockets -> dock-nc -> dock-cov -> rank -> viz"
 	@echo "  smoke     run pipeline on a 3-target subset (METTL3, ALKBH5, YTHDF2)"
 	@echo "  clean     remove derived data (keeps source PDBs)"
 
@@ -45,7 +46,10 @@ dock-cov:
 rank:
 	$(PY) $(SCRIPTS)/07_score_and_rank.py
 
-all: ligand fetch prep cys pockets dock-nc dock-cov rank
+viz:
+	$(PY) $(SCRIPTS)/08_visualize_top_hits.py
+
+all: ligand fetch prep cys pockets dock-nc dock-cov rank viz
 
 smoke:
 	SMOKE_GENES="METTL3,ALKBH5,YTHDF2" $(PY) $(SCRIPTS)/01_fetch_structures.py
