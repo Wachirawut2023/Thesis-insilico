@@ -1,0 +1,87 @@
+#cloud-config
+# GCP GPU instance bootstrap for Tier-3 MD on top 8 hits.
+# Designed to work with the Deep Learning VM image (CUDA + NVIDIA drivers
+# pre-installed); we only need to add GROMACS and clone the repo.
+
+package_update: true
+package_upgrade: false
+packages:
+  - build-essential
+  - git
+  - curl
+  - tmux
+  - htop
+  - rsync
+  - unzip
+  - jq
+
+write_files:
+  - path: /opt/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      exec > >(tee -a /var/log/bootstrap.log) 2>&1
+      echo "[gpu-bootstrap] starting $(date -Is)"
+
+      # 1. Verify GPU + driver are available (Deep Learning image should already)
+      nvidia-smi || { echo "ERROR: NVIDIA driver not loaded"; exit 1; }
+
+      # 2. Miniforge (lighter than the bundled Anaconda; gives mamba)
+      if [ ! -d /opt/miniforge ]; then
+        curl -L -o /tmp/miniforge.sh \
+          "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+        bash /tmp/miniforge.sh -b -p /opt/miniforge
+        rm /tmp/miniforge.sh
+      fi
+      export PATH="/opt/miniforge/bin:$PATH"
+      source /opt/miniforge/etc/profile.d/conda.sh
+
+      # 3. Repo
+      WORK_DIR="${WORK_DIR:-/opt/Thesis-insilico}"
+      REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
+      BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+      if [ ! -d "$WORK_DIR" ]; then
+        git clone "$REPO_URL" "$WORK_DIR"
+      fi
+      cd "$WORK_DIR"
+      git fetch origin
+      git checkout "$BRANCH"
+      git pull --ff-only
+
+      # 4. MD environment — GROMACS with CUDA support + analysis libs
+      if ! conda env list | grep -q '^md'; then
+        mamba create -n md -c conda-forge -y \
+          gromacs=2024 \
+          python=3.11 \
+          mdanalysis \
+          freesasa \
+          biopython \
+          matplotlib \
+          pandas \
+          numpy \
+          scipy \
+          tqdm \
+          pyyaml
+      fi
+      conda activate md
+
+      # 5. Verify GROMACS sees the GPU
+      gmx --version | grep -E "GROMACS|GPU support|CUDA" || true
+
+      # 6. Permissions for gcloud-ssh user
+      chmod -R a+rX "$WORK_DIR"
+
+      echo "[gpu-bootstrap] done $(date -Is)"
+
+  - path: /root/.tmux.conf
+    permissions: "0644"
+    content: |
+      set -g history-limit 50000
+      set -g mouse on
+
+runcmd:
+  - [ bash, -lc, "bash /opt/bootstrap.sh" ]
+  - [ bash, -lc, "echo bootstrap-complete > /opt/.bootstrap-complete" ]
+
+final_message: "GPU bootstrap complete after $UPTIME seconds. See /var/log/bootstrap.log"

@@ -127,12 +127,29 @@ In `docs/chapter_in_silico.md`:
 
 ## Cost & runtime
 
+Two provisioning paths supported:
+
+**GCP `g2-standard-8` with NVIDIA L4** (recommended — same project as
+static pipeline):
+
+| Resource | Specification | Cost |
+|---|---|---|
+| Compute | g2-standard-8 + L4 | $0.82/hr |
+| Wall time | 8 × 2 × ~1.5–2 hr each | ~24–32 GPU-hr |
+| Total compute | | ~$20–26 |
+| Storage + IP + egress | | ~$1 |
+| **Total** | | **~$25–28** (or $0 with GCP free trial credit) |
+
+Runbook: `infra/gcp-gpu/README.md`. Quota request needed first (most
+projects have 0 GPU quota by default — see step 0 of the runbook).
+
+**RunPod RTX 4090** (alternative — cheaper but separate account):
+
 | Resource | Specification | Cost |
 |---|---|---|
 | Compute | RunPod RTX 4090 | $0.40/hr |
-| Wall time | 8 proteins × 2 modes × ~1.5–2 hr each = 24–32 GPU-hr | ~$10–13 |
-| Storage | 50 GB volume × ~1 day | ~$0.10 |
-| Buffer for reruns | | ~$5 |
+| Total GPU time | 24–32 GPU-hr | ~$10–13 |
+| Storage + buffer | | ~$5 |
 | **Total** | | **~$15–20** |
 
-See `infra/runpod/README.md` for the full provisioning runbook.
+Runbook: `infra/runpod/README.md`. New account/CLI but ~$10 cheaper.
