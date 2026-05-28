@@ -28,12 +28,32 @@ MACHINE_TYPE="${MACHINE_TYPE:-g2-standard-8}"    # 8 vCPU, 32 GB, 1× L4
 GPU_TYPE="${GPU_TYPE:-nvidia-l4}"
 GPU_COUNT="${GPU_COUNT:-1}"
 ZONE="${ZONE:-us-central1-a}"
-IMAGE_FAMILY="${IMAGE_FAMILY:-common-cu123-debian-11}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-deeplearning-platform-release}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-100}"
 DISK_TYPE="${DISK_TYPE:-pd-balanced}"
 REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
 BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+
+# Auto-detect the latest Deep Learning VM CUDA-on-Debian-11 image family
+# unless the user explicitly overrides via IMAGE_FAMILY env var.
+# (The exact family name rotates as Google publishes new CUDA versions —
+# common-cu124-debian-11, common-cu125-debian-11, etc.)
+if [ -z "${IMAGE_FAMILY:-}" ]; then
+  IMAGE_FAMILY=$(gcloud compute images list \
+    --project="$IMAGE_PROJECT" \
+    --filter='family~^common-cu1[0-9]+-debian-11$' \
+    --format='value(family)' 2>/dev/null | sort -u | tail -1)
+  if [ -z "$IMAGE_FAMILY" ]; then
+    echo "ERROR: Could not auto-detect a Deep Learning VM image family." >&2
+    echo "Manually set IMAGE_FAMILY and re-run, e.g.:" >&2
+    echo "  IMAGE_FAMILY=common-cu126-debian-11 $0" >&2
+    echo "Available families:" >&2
+    gcloud compute images list --project="$IMAGE_PROJECT" \
+      --filter='family~^common-cu' --format='value(family)' 2>/dev/null | sort -u >&2 || true
+    exit 1
+  fi
+  echo "Auto-detected image family: $IMAGE_FAMILY"
+fi
 
 cd "$(dirname "$0")"
 
