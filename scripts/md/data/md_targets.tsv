@@ -1,0 +1,17 @@
+gene	mode	chain	anchor_cys	partner_cys	binding_mode	source_pdb	notes
+TXN1	apo	A	-	-	-	1ERT	positive control; CGPC active site
+TXN1	bound	A	32	35	bidentate	1ERT	C32-C35 vicinal pair, 3.92 A
+PIN1	apo	A	-	-	-	1PIN	positive control; catalytic Cys
+PIN1	bound	A	113	-	monodentate	1PIN	C113 catalytic, at active site
+GAPDH	apo	O	-	-	-	1U8F	positive control; tetramer chain O
+GAPDH	bound	O	152	-	monodentate	1U8F	catalytic Cys152
+METTL3	apo	A	-	-	-	5IL0	headline m6A hit
+METTL3	bound	A	375	-	monodentate	5IL0	C375 at 3.45 A from DPPW SAM motif
+FTO	apo	A	-	-	-	3LFM	eraser; possibly_allosteric
+FTO	bound	A	-	-	bidentate	3LFM	read anchor from docking_covalent.tsv
+ALKBH5	apo	A	-	-	-	4O61	eraser; possibly_allosteric
+ALKBH5	bound	A	-	-	bidentate	4O61	read anchor from docking_covalent.tsv
+CBLL1	apo	A	-	-	-	-	writer E3; uses AF model
+CBLL1	bound	A	-	-	bidentate	-	read anchor from docking_covalent.tsv
+RBM15B	apo	A	-	-	-	-	scaffold; uses AF model; many reactive Cys
+RBM15B	bound	A	-	-	monodentate	-	read anchor from docking_covalent.tsv

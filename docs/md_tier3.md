@@ -1,0 +1,138 @@
+# Tier 3 — Molecular Dynamics methodology
+
+Supplementary methods to be merged into the in silico chapter (likely as
+a new §10 or as a sub-section of §6 Discussion).
+
+## What MD adds beyond the static screen
+
+The static pipeline (chapters 1–9) ranks proteins by predicted
+arsenic-binding plausibility based on **a single conformation** of each
+protein. MD addresses two specific limitations of that approach:
+
+1. **Cryptic cysteines** — buried cysteines that may become accessible
+   during normal protein motion. The static SASA is a snapshot; the MD
+   trajectory gives the *distribution* of SASA over time.
+2. **Binding-pose stability** — does the protein conformation tolerate
+   arsenic at the predicted cysteine, or does it distort / dissociate
+   in dynamics?
+
+Two MD modes are run per protein:
+
+### A. Apo MD (50 ns)
+Protein in explicit water (TIP3P), 150 mM NaCl, AMBER ff19SB force
+field. Standard biomolecular protocol: energy minimisation → 100 ps NVT
+equilibration at 310 K (position restraints on heavy atoms) → 100 ps
+NPT equilibration at 1 bar → 50 ns production with 2 fs timestep,
+LINCS constraints on hydrogen bonds, PME electrostatics.
+
+**Analyses produced**:
+- Cα RMSD over time (overall protein stability)
+- Per-residue RMSF (mobility map)
+- Per-cysteine Sγ SASA over time (cryptic-Cys detection)
+- Vicinal-Cys distance over time (persistence of bidentate-capable pairs)
+
+### B. As-bound MD (50 ns)
+Same protocol as apo, but with a Mg²⁺ surrogate placed at the predicted
+As(III) bonding position and harmonic distance restraints maintaining
+Mg²⁺–SG distance at 2.25 ± 0.02 Å (the As–S bond length from crystal
+structures).
+
+**Why Mg²⁺ and not As(III) directly?** As(III) is not parameterised in
+AMBER ff19SB or any standard biomolecular force field. The two paths
+to "real" As MD are:
+
+1. Derive partial atomic charges via QM (e.g. RESP fitting from
+   Gaussian B3LYP/6-31G* calculations on As-cysteinate model
+   complexes), then assign bonded parameters from analogous metalloid
+   systems. ~1–2 days of QM/setup work *per protein*.
+2. Use MCPB.py from AmberTools to generate parameters for As-bonded
+   residues automatically. Faster but still requires QM input and
+   custom validation.
+
+For this thesis, the Mg²⁺ surrogate with distance restraints is the
+defensible pragmatic choice because:
+
+- Mg²⁺ has a similar ionic radius to As(III) (0.72 Å vs 0.58 Å).
+- Both have +0 to +3 nominal charge ranges in their protein-bound forms.
+- The distance restraint enforces the As–S geometry without needing
+  custom bonded parameters.
+- The question we want MD to answer ("does the protein binding pocket
+  tolerate occupation by a metal-like atom at the predicted As
+  geometry?") is exactly what this setup tests.
+- The simulation does *not* claim to compute absolute As binding
+  energies — those would need full QM/MM or the parameterisation work
+  above. The scientific claim is restricted to **pose stability and
+  protein conformational response**.
+
+This caveat is explicit in the Methods section.
+
+## What the analyses tell us
+
+### RMSD plateau
+- A protein whose Cα RMSD plateaus below 2 Å is stable in its starting
+  fold. Drift above 3–4 Å suggests partial unfolding (uninteresting
+  artefact) or a real conformational rearrangement (potentially
+  interesting).
+- For As-bound vs apo: if As-bound RMSD is markedly higher than apo,
+  the predicted binding causes structural perturbation — possibly
+  indicating the binding is destabilising rather than stable.
+
+### RMSF map
+- High RMSF (> 3 Å) regions are floppy loops/termini — usually not
+  functional.
+- Catalytic-site residues should be low-RMSF (~1 Å). If As-bound RMSF
+  at the active site spikes, that's evidence of allosteric perturbation.
+
+### Per-Cys SASA over time
+- The headline analysis. Each reactive Cys identified in the static
+  screen should remain accessible (mean SASA > 5 Å²) throughout the
+  MD trajectory. If it goes buried (mean < 5) most of the simulation,
+  the static prediction was a snapshot artefact.
+- **Cryptic-Cys flag**: any Cys whose minimum SASA < 2 Å² (buried)
+  but maximum SASA > 10 Å² (transiently exposed) is flagged. These are
+  candidates that the static screen missed.
+
+### Vicinal-Cys distance over time
+- For bidentate hits (TXN1 Cys32-Cys35 at 3.92 Å in static): track
+  the Sγ–Sγ distance over the trajectory. If it stays in the 3.0–4.4 Å
+  bidentate window, the bidentate prediction is dynamically supported.
+  If it drifts above 5–6 Å, the pair only fleetingly satisfies the As
+  geometry.
+
+## Interpretation matrix
+
+For each protein, after both apo + bound MD complete:
+
+| Apo result | Bound result | Interpretation |
+|---|---|---|
+| Cys stays accessible (mean SASA > 5) | Mg²⁺ stays bound (distance restraint satisfied), low ΔRMSD apo→bound | **Confirmed binding pose, stable.** Strongest result. |
+| Cys stays accessible | Mg²⁺ pose tolerated but RMSD higher | **Binding plausible but causes conformational change.** Possibly allosteric inhibition. |
+| Cys becomes buried (mean SASA < 5) | n/a (binding probably can't form) | **Static prediction overcalled.** Demote from likely_inhibitory tier. |
+| Cryptic Cys flagged (was buried, opens transiently) | n/a | **New candidate target** the static screen missed. |
+| Cys stays accessible | Large protein distortion in bound | **Geometric possibility but biological cost.** Mark as ambiguous; needs in vitro test. |
+
+## Where the results plug into the thesis
+
+In `docs/chapter_in_silico.md`:
+
+- §3.7 (limits) — strike "static structures only" from limitations once
+  Tier 3 is done.
+- §5 (results) — add per-protein paragraph: "MD over 50 ns confirms
+  Cys375 remains solvent-accessible (mean SASA = ... Å², range ... to
+  ...) and the bound-state RMSD ... ."
+- §6 (discussion) — strengthen the METTL3 / FTO inhibition story with
+  pose-stability evidence.
+- New §10 — "Molecular dynamics validation of top hits" — summary of
+  the apo + bound analyses with the interpretation matrix above.
+
+## Cost & runtime
+
+| Resource | Specification | Cost |
+|---|---|---|
+| Compute | RunPod RTX 4090 | $0.40/hr |
+| Wall time | 8 proteins × 2 modes × ~1.5–2 hr each = 24–32 GPU-hr | ~$10–13 |
+| Storage | 50 GB volume × ~1 day | ~$0.10 |
+| Buffer for reruns | | ~$5 |
+| **Total** | | **~$15–20** |
+
+See `infra/runpod/README.md` for the full provisioning runbook.
