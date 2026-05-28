@@ -34,22 +34,36 @@ DISK_TYPE="${DISK_TYPE:-pd-balanced}"
 REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
 BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
 
-# Auto-detect the latest Deep Learning VM CUDA-on-Debian-11 image family
-# unless the user explicitly overrides via IMAGE_FAMILY env var.
-# (The exact family name rotates as Google publishes new CUDA versions —
-# common-cu124-debian-11, common-cu125-debian-11, etc.)
+# Auto-detect the latest Deep Learning VM CUDA image family unless the
+# user explicitly overrides via IMAGE_FAMILY env var.
+#
+# Google rotates these names as CUDA versions and base OSes change.
+# Examples seen historically:
+#   common-cu123-debian-11             (CUDA 12.3 on Debian 11)
+#   common-cu126-debian-11             (CUDA 12.6 on Debian 11)
+#   common-cu129-ubuntu-2204-nvidia-580 (CUDA 12.9 on Ubuntu 22.04, driver 580)
+#
+# Preference order: ubuntu-2204 > ubuntu-2404 > debian-11.
+# Within each tier we pick the highest CUDA version (sort -V).
 if [ -z "${IMAGE_FAMILY:-}" ]; then
-  IMAGE_FAMILY=$(gcloud compute images list \
+  candidates=$(gcloud compute images list \
     --project="$IMAGE_PROJECT" \
-    --filter='family~^common-cu1[0-9]+-debian-11$' \
-    --format='value(family)' 2>/dev/null | sort -u | tail -1)
+    --filter='family~^common-cu' \
+    --format='value(family)' 2>/dev/null | sort -u)
+  IMAGE_FAMILY=""
+  for tier in 'ubuntu-2204' 'ubuntu-2404' 'debian-11'; do
+    match=$(echo "$candidates" | grep "$tier" | sort -V | tail -1 || true)
+    if [ -n "$match" ]; then
+      IMAGE_FAMILY="$match"
+      break
+    fi
+  done
   if [ -z "$IMAGE_FAMILY" ]; then
     echo "ERROR: Could not auto-detect a Deep Learning VM image family." >&2
     echo "Manually set IMAGE_FAMILY and re-run, e.g.:" >&2
-    echo "  IMAGE_FAMILY=common-cu126-debian-11 $0" >&2
+    echo "  IMAGE_FAMILY=common-cu129-ubuntu-2204-nvidia-580 $0" >&2
     echo "Available families:" >&2
-    gcloud compute images list --project="$IMAGE_PROJECT" \
-      --filter='family~^common-cu' --format='value(family)' 2>/dev/null | sort -u >&2 || true
+    echo "$candidates" >&2
     exit 1
   fi
   echo "Auto-detected image family: $IMAGE_FAMILY"
