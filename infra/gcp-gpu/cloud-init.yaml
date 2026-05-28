@@ -20,7 +20,11 @@ write_files:
     permissions: "0755"
     content: |
       #!/usr/bin/env bash
-      set -euo pipefail
+      # Note: deliberately NOT set -u here — the conda-forge GROMACS package
+      # sources GMXRC.bash on activation, which references variables that
+      # may be unset (GMXLDLIB etc.) under strict mode. set -e + pipefail is
+      # enough to catch real failures.
+      set -eo pipefail
       exec > >(tee -a /var/log/bootstrap.log) 2>&1
       echo "[gpu-bootstrap] starting $(date -Is)"
 
@@ -64,12 +68,16 @@ write_files:
           tqdm \
           pyyaml
       fi
-      conda activate md
 
-      # 5. Verify GROMACS sees the GPU
-      gmx --version | grep -E "GROMACS|GPU support|CUDA" || true
+      # 5. Activate. GROMACS post-activate hook references unset vars on
+      # first source; tolerate with `|| true` rather than abort the whole
+      # bootstrap.
+      conda activate md || true
 
-      # 6. Permissions for gcloud-ssh user
+      # 6. Verify GROMACS sees the GPU
+      gmx --version 2>&1 | grep -E "GROMACS|GPU support|CUDA" || true
+
+      # 7. Permissions for gcloud-ssh user
       chmod -R a+rX "$WORK_DIR"
 
       echo "[gpu-bootstrap] done $(date -Is)"
