@@ -61,5 +61,10 @@ echo "Backed up to:"
 echo "  gs://$FULL_BUCKET/thesis-backup-${ts}.tar.gz   (timestamped)"
 echo "  gs://$FULL_BUCKET/latest.tar.gz                (alias for restore)"
 echo
+echo "Verify alias was written:"
+gsutil ls "gs://$FULL_BUCKET/latest.tar.gz" 2>/dev/null \
+  && echo "  alias present" \
+  || echo "  WARNING: latest.tar.gz alias missing; use 'gsutil ls gs://$FULL_BUCKET/' and pick most recent"
+echo
 echo "Now safe to delete the VM:"
 echo "  gcloud compute instances delete as-m6a --zone=us-central1-a --quiet"

@@ -26,9 +26,20 @@ echo "Archive: $ARCHIVE"
 echo
 
 if ! gsutil ls "gs://$FULL_BUCKET/$ARCHIVE" >/dev/null 2>&1; then
-  echo "Archive not found. Available backups:"
-  gsutil ls "gs://$FULL_BUCKET/" || true
-  exit 1
+  # latest.tar.gz alias missing — fall back to most recent timestamped backup
+  if [ "$ARCHIVE" = "latest.tar.gz" ]; then
+    ARCHIVE=$(gsutil ls "gs://$FULL_BUCKET/thesis-backup-*.tar.gz" 2>/dev/null \
+              | sort | tail -1 | sed "s|gs://$FULL_BUCKET/||")
+    if [ -z "$ARCHIVE" ]; then
+      echo "No backups found in gs://$FULL_BUCKET/"
+      exit 1
+    fi
+    echo "latest.tar.gz alias missing; using most recent: $ARCHIVE"
+  else
+    echo "Archive not found. Available backups:"
+    gsutil ls "gs://$FULL_BUCKET/" || true
+    exit 1
+  fi
 fi
 
 tmp="/tmp/$(basename "$ARCHIVE")"
