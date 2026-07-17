@@ -14,7 +14,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _common import PREP_DIR, RESULTS, get_logger, load_targets
+from _common import (
+    CHECKPOINT_DIR,
+    PREP_DIR,
+    RESULTS,
+    append_tsv_rows,
+    get_logger,
+    load_checkpoint,
+    load_targets,
+    mark_done,
+)
 
 LOG = get_logger("pockets")
 POCKET_TSV = RESULTS / "pocket_table.tsv"
@@ -137,13 +146,24 @@ def _box_around(centre: tuple[float, float, float], pad: float = BOX_PAD) -> tup
     return (pad * 2, pad * 2, pad * 2)
 
 
+POCKET_FIELDS = ["gene", "pocket_id", "score", "druggability", "n_alpha", "cx", "cy", "cz"]
+BOX_FIELDS = ["gene", "box_id", "origin", "cx", "cy", "cz", "sx", "sy", "sz", "anchor_cys", "pocket_id"]
+STAGE = "04_pockets"
+
+
 def main() -> int:
-    pocket_rows: list[dict] = []
-    box_rows: list[dict] = []
-    for t in load_targets():
+    targets = load_targets()
+    done = load_checkpoint(STAGE)
+    n_new = 0
+    for t in targets:
+        if t.gene in done:
+            continue
         pdb = PREP_DIR / f"{t.gene}.clean.pdb"
         if not pdb.exists():
+            LOG.warning("no prepared receptor for %s; skipping (not checkpointed, retry after prep)", t.gene)
             continue
+        pocket_rows: list[dict] = []
+        box_rows: list[dict] = []
         out_dir = _run_fpocket(pdb)
         pockets: list[dict] = []
         if out_dir is not None:
@@ -217,19 +237,17 @@ def main() -> int:
                     }
                 )
 
-    from _common import write_tsv
+        append_tsv_rows(pocket_rows, POCKET_TSV, POCKET_FIELDS)
+        append_tsv_rows(box_rows, BOXES_TSV, BOX_FIELDS)
+        mark_done(STAGE, t.gene)
+        n_new += 1
+        LOG.info("[%s] %d pockets, %d docking boxes", t.gene, len(pocket_rows), len(box_rows))
 
-    write_tsv(
-        pocket_rows,
-        POCKET_TSV,
-        ["gene", "pocket_id", "score", "druggability", "n_alpha", "cx", "cy", "cz"],
+    LOG.info(
+        "processed %d new target(s), %d already checkpointed (of %d total) -> %s / %s",
+        n_new, len(done), len(targets), POCKET_TSV, BOXES_TSV,
     )
-    write_tsv(
-        box_rows,
-        BOXES_TSV,
-        ["gene", "box_id", "origin", "cx", "cy", "cz", "sx", "sy", "sz", "anchor_cys", "pocket_id"],
-    )
-    LOG.info("wrote %d pockets, %d docking boxes", len(pocket_rows), len(box_rows))
+    LOG.info("checkpoints in %s — delete %s/%s.done to force a full recompute", CHECKPOINT_DIR, CHECKPOINT_DIR, STAGE)
     return 0
 
 

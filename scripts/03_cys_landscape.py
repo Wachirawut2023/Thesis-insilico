@@ -20,7 +20,17 @@ from pathlib import Path
 
 import yaml
 
-from _common import DATA, PREP_DIR, RESULTS, get_logger, load_targets, write_tsv
+from _common import (
+    CHECKPOINT_DIR,
+    DATA,
+    PREP_DIR,
+    RESULTS,
+    append_tsv_rows,
+    get_logger,
+    load_checkpoint,
+    load_targets,
+    mark_done,
+)
 
 LOG = get_logger("cys")
 SS_BOND_MAX = 2.3
@@ -259,40 +269,44 @@ def analyse_protein(gene: str, sites_cfg: dict) -> tuple[list[dict], dict]:
     }
 
 
+CYS_FIELDS = [
+    "gene",
+    "chain",
+    "resi",
+    "sg_sasa",
+    "pka",
+    "in_disulfide",
+    "accessible",
+    "vicinal_partners",
+    "n_vicinal_partners",
+    "functional_proximity_A",
+    "reactive",
+]
+SUMMARY_FIELDS = [
+    "gene", "family", "n_cys", "n_reactive", "n_vicinal_pairs", "n_vicinal_triads", "vicinal_score", "status",
+]
+STAGE = "03_cys"
+
+
 def main() -> int:
     sites_cfg = _load_sites()
     targets = load_targets()
-    all_rows: list[dict] = []
-    summary: list[dict] = []
+    done = load_checkpoint(STAGE)
+    n_new = 0
     for t in targets:
+        if t.gene in done:
+            continue
         rows, s = analyse_protein(t.gene, sites_cfg)
-        all_rows.extend(rows)
         s["family"] = t.family
-        summary.append(s)
-    write_tsv(
-        all_rows,
-        OUT_TSV,
-        [
-            "gene",
-            "chain",
-            "resi",
-            "sg_sasa",
-            "pka",
-            "in_disulfide",
-            "accessible",
-            "vicinal_partners",
-            "n_vicinal_partners",
-            "functional_proximity_A",
-            "reactive",
-        ],
+        append_tsv_rows(rows, OUT_TSV, CYS_FIELDS)
+        append_tsv_rows([s], PROTEIN_TSV, SUMMARY_FIELDS)
+        mark_done(STAGE, t.gene)
+        n_new += 1
+    LOG.info(
+        "processed %d new target(s), %d already checkpointed (of %d total) -> %s / %s",
+        n_new, len(done), len(targets), OUT_TSV, PROTEIN_TSV,
     )
-    write_tsv(
-        summary,
-        PROTEIN_TSV,
-        ["gene", "family", "n_cys", "n_reactive", "n_vicinal_pairs", "n_vicinal_triads", "vicinal_score", "status"],
-    )
-    LOG.info("wrote %s (%d rows)", OUT_TSV, len(all_rows))
-    LOG.info("wrote %s", PROTEIN_TSV)
+    LOG.info("checkpoints in %s — delete %s/%s.done to force a full recompute", CHECKPOINT_DIR, CHECKPOINT_DIR, STAGE)
     return 0
 
 

@@ -14,7 +14,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _common import LIGAND_DIR, PREP_DIR, RESULTS, get_logger, write_tsv
+from _common import (
+    CHECKPOINT_DIR,
+    LIGAND_DIR,
+    PREP_DIR,
+    RESULTS,
+    append_tsv_rows,
+    get_logger,
+    load_checkpoint,
+    mark_done,
+)
 
 LOG = get_logger("dock_nc")
 BOXES_TSV = RESULTS / "docking_boxes.tsv"
@@ -58,6 +67,14 @@ def _run_vina(receptor: Path, ligand: Path, box: dict, out: Path) -> float | Non
     return None
 
 
+OUT_FIELDS = ["gene", "box_id", "anchor_cys", "vina_dG_kcal_mol", "pose_file"]
+STAGE = "05_dock_nc"
+
+
+def _box_key(gene: str, box_id: str) -> str:
+    return f"{gene}::{box_id}"
+
+
 def main() -> int:
     if not _have_vina():
         LOG.error("vina not in PATH; install via conda (vina>=1.2)")
@@ -70,30 +87,37 @@ def main() -> int:
         LOG.error("missing %s — run 04_pocket_detection.py first", BOXES_TSV)
         return 1
     POSES_DIR.mkdir(parents=True, exist_ok=True)
-    out_rows: list[dict] = []
+    done = load_checkpoint(STAGE)
     with BOXES_TSV.open() as fh:
-        for box in csv.DictReader(fh, delimiter="\t"):
-            recep = PREP_DIR / f"{box['gene']}.pdbqt"
-            if not recep.exists():
-                LOG.warning("no receptor for %s", box["gene"])
-                continue
-            pose = POSES_DIR / f"{box['gene']}_{box['box_id']}.pdbqt"
-            score = _run_vina(recep, ligand, box, pose)
-            out_rows.append(
-                {
-                    "gene": box["gene"],
-                    "box_id": box["box_id"],
-                    "anchor_cys": box["anchor_cys"],
-                    "vina_dG_kcal_mol": f"{score:.3f}" if score is not None else "NA",
-                    "pose_file": str(pose.relative_to(RESULTS)) if pose.exists() else "",
-                }
-            )
-    write_tsv(
-        out_rows,
-        OUT_TSV,
-        ["gene", "box_id", "anchor_cys", "vina_dG_kcal_mol", "pose_file"],
+        boxes = list(csv.DictReader(fh, delimiter="\t"))
+    n_new = 0
+    for box in boxes:
+        key = _box_key(box["gene"], box["box_id"])
+        if key in done:
+            continue
+        recep = PREP_DIR / f"{box['gene']}.pdbqt"
+        if not recep.exists():
+            LOG.warning("no receptor for %s; skipping box %s (not checkpointed, retry after prep)", box["gene"], box["box_id"])
+            continue
+        pose = POSES_DIR / f"{box['gene']}_{box['box_id']}.pdbqt"
+        score = _run_vina(recep, ligand, box, pose)
+        row = {
+            "gene": box["gene"],
+            "box_id": box["box_id"],
+            "anchor_cys": box["anchor_cys"],
+            "vina_dG_kcal_mol": f"{score:.3f}" if score is not None else "NA",
+            "pose_file": str(pose.relative_to(RESULTS)) if pose.exists() else "",
+        }
+        append_tsv_rows([row], OUT_TSV, OUT_FIELDS)
+        mark_done(STAGE, key)
+        n_new += 1
+        LOG.info("[%s/%s] vina_dG=%s (%d/%d done)", box["gene"], box["box_id"], row["vina_dG_kcal_mol"], len(done) + n_new, len(boxes))
+
+    LOG.info(
+        "processed %d new box(es), %d already checkpointed (of %d total) -> %s",
+        n_new, len(done), len(boxes), OUT_TSV,
     )
-    LOG.info("wrote %d rows -> %s", len(out_rows), OUT_TSV)
+    LOG.info("checkpoints in %s — delete %s/%s.done to force a full recompute", CHECKPOINT_DIR, CHECKPOINT_DIR, STAGE)
     return 0
 
 

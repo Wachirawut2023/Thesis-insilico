@@ -35,7 +35,16 @@ import math
 import sys
 from pathlib import Path
 
-from _common import PREP_DIR, RESULTS, get_logger, load_targets, write_tsv
+from _common import (
+    CHECKPOINT_DIR,
+    PREP_DIR,
+    RESULTS,
+    append_tsv_rows,
+    get_logger,
+    load_checkpoint,
+    load_targets,
+    mark_done,
+)
 
 LOG = get_logger("dock_cov")
 CYS_TSV = RESULTS / "cys_table.tsv"
@@ -356,6 +365,24 @@ def analyse(gene: str, cys_rows: list[dict]) -> list[dict]:
     return out
 
 
+OUT_FIELDS = [
+    "gene",
+    "anchor_chain",
+    "anchor_resi",
+    "n_vicinal_partners",
+    "bidentate_feasible",
+    "tridentate_feasible",
+    "binding_mode",
+    "partner_tags",
+    "functional_proximity_A",
+    "thiolate_bonus",
+    "covalent_score",
+    "min_rotamer_sg_sg_A",
+    "bidentate_feasible_rotamer",
+]
+STAGE = "06_dock_cov"
+
+
 def main() -> int:
     if not CYS_TSV.exists():
         LOG.error("missing %s — run 03_cys_landscape.py first", CYS_TSV)
@@ -364,29 +391,21 @@ def main() -> int:
     with CYS_TSV.open() as fh:
         for row in csv.DictReader(fh, delimiter="\t"):
             by_gene.setdefault(row["gene"], []).append(row)
-    rows: list[dict] = []
-    for t in load_targets():
-        rows.extend(analyse(t.gene, by_gene.get(t.gene, [])))
-    write_tsv(
-        rows,
-        OUT_TSV,
-        [
-            "gene",
-            "anchor_chain",
-            "anchor_resi",
-            "n_vicinal_partners",
-            "bidentate_feasible",
-            "tridentate_feasible",
-            "binding_mode",
-            "partner_tags",
-            "functional_proximity_A",
-            "thiolate_bonus",
-            "covalent_score",
-            "min_rotamer_sg_sg_A",
-            "bidentate_feasible_rotamer",
-        ],
+    targets = load_targets()
+    done = load_checkpoint(STAGE)
+    n_new = 0
+    for t in targets:
+        if t.gene in done:
+            continue
+        rows = analyse(t.gene, by_gene.get(t.gene, []))
+        append_tsv_rows(rows, OUT_TSV, OUT_FIELDS)
+        mark_done(STAGE, t.gene)
+        n_new += 1
+    LOG.info(
+        "processed %d new target(s), %d already checkpointed (of %d total) -> %s",
+        n_new, len(done), len(targets), OUT_TSV,
     )
-    LOG.info("wrote %d covalent anchor rows -> %s", len(rows), OUT_TSV)
+    LOG.info("checkpoints in %s — delete %s/%s.done to force a full recompute", CHECKPOINT_DIR, CHECKPOINT_DIR, STAGE)
     return 0
 
 

@@ -19,6 +19,10 @@ help:
 	@echo "  all       fetch -> prep -> cys -> pockets -> dock-nc -> dock-cov -> rank -> viz"
 	@echo "  smoke     run pipeline on a 3-target subset (METTL3, ALKBH5, YTHDF2)"
 	@echo "  clean     remove derived data (keeps source PDBs)"
+	@echo ""
+	@echo "Stages cys/pockets/dock-nc/dock-cov checkpoint per-gene (or per-box for"
+	@echo "dock-nc) in results/.checkpoints/ — safe to re-run 'make all' after a crash,"
+	@echo "already-completed targets are skipped. 'make clean' clears checkpoints too."
 
 env:
 	conda env create -f env/environment.yml || conda env update -f env/environment.yml
@@ -69,4 +73,4 @@ clean:
 	       results/docking_boxes.tsv results/docking_noncovalent.tsv \
 	       results/docking_covalent.tsv results/composite_ranking.tsv \
 	       results/protein_summary.tsv results/REPORT.md \
-	       results/figures/*.png results/docking_poses
+	       results/figures/*.png results/docking_poses results/.checkpoints

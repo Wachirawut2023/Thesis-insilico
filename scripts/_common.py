@@ -17,6 +17,7 @@ LIGAND_DIR = ROOT / "ligands"
 RESULTS = ROOT / "results"
 FIGURES = RESULTS / "figures"
 TARGETS_TSV = DATA / "targets.tsv"
+CHECKPOINT_DIR = RESULTS / ".checkpoints"
 
 
 @dataclass(frozen=True)
@@ -86,3 +87,50 @@ def write_tsv(rows: Iterable[dict], path: Path, fieldnames: list[str]) -> None:
         w.writeheader()
         for r in rows:
             w.writerow(r)
+
+
+# ── Checkpoint/resume helpers ──────────────────────────────────────────────
+#
+# Long stages (pocket detection, docking) process one target at a time and
+# can run for hours; a Colab crash/disconnect mid-stage should not lose
+# already-computed targets. Each stage keeps a `results/.checkpoints/<stage>.done`
+# file listing genes it has fully finished (one per line, appended as each
+# gene completes) and appends that gene's output rows to the TSV immediately
+# rather than buffering everything in memory until the end. On restart, a
+# stage skips any gene already listed in its checkpoint file.
+#
+# `make clean` removes results/.checkpoints/ along with the TSVs it guards,
+# so a fresh run never skips work it hasn't actually produced.
+
+
+def load_checkpoint(stage: str) -> set[str]:
+    """Return the set of keys (usually gene symbols) already completed for `stage`."""
+    p = CHECKPOINT_DIR / f"{stage}.done"
+    if not p.exists():
+        return set()
+    return {line.strip() for line in p.read_text().splitlines() if line.strip()}
+
+
+def mark_done(stage: str, key: str) -> None:
+    """Record that `key` has fully completed for `stage` (call after its rows are on disk)."""
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    p = CHECKPOINT_DIR / f"{stage}.done"
+    with p.open("a") as fh:
+        fh.write(key + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def append_tsv_rows(rows: Iterable[dict], path: Path, fieldnames: list[str]) -> None:
+    """Append rows to a TSV, creating it (with header) if it doesn't exist yet."""
+    rows = list(rows)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    is_new = not path.exists()
+    with path.open("a", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fieldnames, delimiter="\t")
+        if is_new:
+            w.writeheader()
+        for r in rows:
+            w.writerow(r)
+        fh.flush()
+        os.fsync(fh.fileno())
