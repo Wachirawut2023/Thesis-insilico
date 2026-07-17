@@ -45,14 +45,23 @@ Outputs land in `results/`:
 ## Pipeline stages
 
 ```
+00_verify_mettl3_cys.py  METTL3 Cys375-vs-Cys376 numbering + geometry diagnostic (run after fetch)
 01_fetch_structures.py   PDB + AlphaFold downloads
 02_prepare_receptors.py  Strip, protonate (pH 7.4, PROPKA), PDBQT
 03_cys_landscape.py      Per-Cys SASA, pKa, disulfide, vicinal pairs/triads
 04_pocket_detection.py   fpocket; intersect with Cys clusters -> docking boxes
 05_dock_noncovalent.py   AutoDock Vina across boxes
-06_dock_covalent.py      Geometric covalent docking (primary readout)
+06_dock_covalent.py      Geometric covalent docking (primary readout; incl. induced-fit bidentate)
 07_score_and_rank.py     Composite score, heatmap, REPORT.md
 ```
+
+> **METTL3 Cys375 vs Cys376.** The pipeline copies residue numbers verbatim from
+> the deposited structure (no renumbering), so the first-pass reactive cysteine
+> was reported as "Cys375" in raw 5IL0 author numbering, whereas the literature
+> SAM-pocket cysteine (adjacent to the SAM-binding Asp377) is **Cys376**. Run
+> `make verify` (Stage 0) after `make fetch` to reconcile the author↔UniProt
+> numbering and measure each candidate Sγ's distance to the SAM/SAH cofactor and
+> Asp377 — see `docs/chapter_in_silico.md` §5.2.
 
 ## What this pipeline does *not* prove
 

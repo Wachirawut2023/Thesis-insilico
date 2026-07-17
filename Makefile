@@ -1,4 +1,4 @@
-.PHONY: help env ligand fetch prep cys pockets dock-nc dock-cov rank viz all smoke clean
+.PHONY: help env ligand fetch verify prep cys pockets dock-nc dock-cov rank viz all smoke clean
 
 PY := python
 SCRIPTS := scripts
@@ -8,6 +8,7 @@ help:
 	@echo "  env       create conda env from env/environment.yml"
 	@echo "  ligand    prepare As(OH)3 PDBQT"
 	@echo "  fetch     download PDB + AlphaFold structures"
+	@echo "  verify    METTL3 Cys375-vs-Cys376 numbering/geometry diagnostic (needs fetch)"
 	@echo "  prep      clean, protonate, PDBQT-ify receptors"
 	@echo "  cys       Cys reactivity landscape (Tier 1)"
 	@echo "  pockets   fpocket + Cys-cluster docking boxes"
@@ -27,6 +28,9 @@ ligand:
 
 fetch:
 	$(PY) $(SCRIPTS)/01_fetch_structures.py
+
+verify:
+	$(PY) $(SCRIPTS)/00_verify_mettl3_cys.py
 
 prep:
 	$(PY) $(SCRIPTS)/02_prepare_receptors.py

@@ -19,7 +19,8 @@ dehydrogenase, peptidyl-prolyl isomerase Pin1) as the top three hits, and
 correctly placed a Cys-poor negative control at the bottom — establishing
 that the methodology is calibrated. Among the m6A panel, **only the writer
 METTL3 emerged in the highest confidence "likely inhibitory" tier**, with a
-reactive cysteine residue 3.45 Å from its catalytic SAM-binding motif.
+reactive cysteine at the edge of its SAM-binding pocket (the Cys376/Asp377
+site; §5.2 reconciles the Cys375↔Cys376 numbering).
 **FTO (eraser)** and **CBLL1 (writer-complex E3 ligase)** scored as "possibly
 allosteric," and **all five YTH-domain readers** ranked as "no binding" —
 consistent with the chemical fact that their m6A-recognition pocket is
@@ -366,25 +367,59 @@ informative) result in §6.
 
 METTL3 is the catalytic core of the m6A writer complex. It transfers a
 methyl group from S-adenosyl-methionine (SAM) onto target adenosines via
-its DPPW catalytic motif (Asp395, Pro396, Pro397, Trp398).
+its DPPW catalytic motif (Asp395, Pro396, Pro397, Trp398). A cysteine at
+the edge of the SAM-binding pocket, **Cys376**, sits immediately next to
+the SAM-contacting residue **Asp377**; independent work shows that
+covalently modifying Cys376 (S-palmitoylation) lowers SAM binding and
+methyltransferase activity, and that the **C376S** point mutant abolishes
+that effect (Cell Reports 2026; see §D.2). Cys376 is therefore the
+functionally decisive, druggable thiol of the SAM pocket.
 
-Our pipeline identifies **Cys375** as the single reactive cysteine in
-the METTL3 structure (PDB 5IL0), with the following properties:
+Our pipeline flags a reactive cysteine at this pocket as the single m6A
+target to reach the `likely_inhibitory` tier — the strongest hit in the
+panel. The first pass reported it as **Cys375** using the raw 5IL0 author
+numbering, whereas the literature pocket cysteine is **Cys376**. Because
+the pipeline applies no residue renumbering (author numbers are copied
+verbatim from the deposited file), this one-residue gap had to be resolved
+before any wet-lab design: it is either a numbering offset (our "Cys375"
+*is* the literature Cys376) or a genuine vicinal Cys375/Cys376 dithiol.
 
-- Solvent-accessible surface area of its sulfur atom: 29.4 Å²
-  (well above the 5 Å² reactivity threshold).
-- Distance to the nearest DPPW residue: **3.45 Å**.
-- Vicinal partner Cys376 at 6.75 Å (outside the bidentate window of
-  3.0–4.4 Å, so monodentate is the predicted binding mode).
-- Not in a disulfide.
+We resolve it with a dedicated verification step,
+`scripts/00_verify_mettl3_cys.py` (Stage 0), which reads the deposited
+coordinates directly and reports, for every cysteine near the site:
 
-Composite score 5.41, tier `likely_inhibitory`. METTL3 is **the only m6A
-machinery protein** to reach this tier.
+- the author↔UniProt numbering map (from the structure's DBREF record),
+  so any off-by-one is explicit;
+- whether positions 375 and 376 are both cysteines (a vicinal dithiol) or
+  a single thiol under two numbering schemes;
+- each Sγ's distance to the bound **SAM/SAH** cofactor (measured on a
+  cofactor-bound complex, e.g. 5IL1), to **Asp377**, and to the DPPW motif,
+  plus the Cys375–Cys376 Sγ–Sγ distance.
 
-The biological prediction is direct: **arsenic binding to Cys375 should
-either occlude or distort the adjacent SAM-binding pocket, reducing
-methyltransferase activity.** This becomes the highest-priority wet-lab
-hypothesis (§7).
+The per-residue SASA, pKa, proximity and Sγ–Sγ values are regenerated into
+`results/cys_table.tsv` and `results/mettl3_cys_verification.tsv`; the
+functional-proximity anchor set now includes Asp377
+(`data/functional_sites.yaml`) so the score reflects the true pocket
+residue rather than only the distal DPPW motif.
+
+**Binding mode.** A single As(III)–Sγ bond at Cys376 (monodentate) is the
+baseline. In addition, because As(III) has a strong affinity for *vicinal
+dithiols*, we test whether arsenic can bridge the Cys375/Cys376 pair
+bidentately. Their Sγ atoms are too far apart in the static crystal to meet
+the bidentate window, so the covalent scorer (`scripts/06_dock_covalent.py`)
+now also samples the Cys χ1 rotamer of both residues and reports the minimum
+clash-free Sγ–Sγ distance achievable on induced fit
+(`min_rotamer_sg_sg_A` / `bidentate_feasible_rotamer`). A reachable bridge
+would make the interaction markedly more specific and less reversible than a
+lone monodentate adduct.
+
+**Biological prediction.** Arsenite binding at Cys376 should occlude or
+distort the SAM pocket and reduce methyltransferase activity — the same
+loss-of-function route validated for Cys376 modification by the
+palmitoylation/C376S work. This is the highest-priority wet-lab hypothesis
+(§7), and it now carries a built-in mechanistic control: the **C376S**
+mutant should lose arsenite sensitivity if inhibition is covalent at that
+thiol.
 
 ### 5.3 The erasers — FTO and ALKBH5
 
@@ -487,7 +522,8 @@ that further support the methodology:
   ALKBH5 is consistent with these reports.
 - METTL3 has been highlighted in some proteomic arsenic-target studies
   but never with mechanistic structural detail; we provide that detail
-  here (Cys375, 3.45 Å from DPPW).
+  here (the SAM-pocket cysteine Cys376, adjacent to the SAM-binding
+  Asp377; §5.2).
 - The YTH-domain `no_binding` prediction is novel as a positive
   *exclusion claim*. It explicitly predicts where direct arsenic chemistry
   cannot reach, which is information that informs experimental design.
@@ -516,7 +552,9 @@ These priorities follow directly from §4 and §5:
 
 | Priority | Assay | What it tests | Rationale |
 |---|---|---|---|
-| **1 (highest)** | METTL3 in vitro methyltransferase activity assay with As(III), with and without DTT/GSH rescue | Direct active-site inhibition | Top in silico hit in the m6A panel; DTT rescue distinguishes direct cysteine binding from indirect effects |
+| **1 (highest)** | Recombinant METTL3–METTL14 in vitro methyltransferase activity ± As(III) (IC50), with and without DTT/GSH rescue | Direct SAM-pocket inhibition at Cys376 | Top in silico hit in the m6A panel; DTT rescue distinguishes direct cysteine binding from indirect effects |
+| **1b (control)** | Repeat the priority-1 assay on the **C376S** point mutant | Mechanistic control: is inhibition covalent at Cys376? | Arsenite sensitivity should be lost/reduced in C376S if the mechanism is covalent modification of Cys376 — mirrors the C376S palmitoylation result (§D.2) |
+| **1c** | LC-MS/MS of As-treated METTL3 tryptic digest | Detect the As adduct on the Cys376 peptide (and a mass shift consistent with an As(SR)₂ bridge if the Cys375/Cys376 bidentate mode is feasible) | Confirms the site and binding mode predicted by Stage 0 + `06_dock_covalent.py` |
 | **2** | FTO and ALKBH5 demethylase activity, ± As(III), ± DTT | Allosteric perturbation of αKG/Fe catalysis | Both `possibly_allosteric` plus independent literature on family-wide arsenic sensitivity |
 | **3** | CBLL1 E3 ubiquitin ligase activity, ± As(III) | Disrupted writer-complex assembly | Novel hypothesis; reactive Cys near RING domain |
 | **Deprioritised** | YTH reader m6A-binding assays with As(III) | Direct competition at the m6A pocket | Predicted-negative by structural analysis; if reader function changes are observed in cells, look for indirect causes |
@@ -569,8 +607,8 @@ known arsenic-binding control proteins (top-3 placement of TXN1, GAPDH,
 and PIN1, bottom placement of the SH3 negative control), and applied to
 the human m6A epitranscriptomic machinery. **METTL3 emerged as the only
 m6A-machinery protein predicted as a high-confidence direct arsenic
-target, via a reactive cysteine 3.45 Å from its catalytic SAM-binding
-motif.** FTO and CBLL1 ranked as plausible allosteric perturbation
+target, via a reactive cysteine at its SAM-binding pocket (Cys376, next
+to Asp377).** FTO and CBLL1 ranked as plausible allosteric perturbation
 targets. The YTH-domain reader family was uniformly predicted as
 biophysically inaccessible to direct arsenic binding.
 

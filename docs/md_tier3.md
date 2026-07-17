@@ -118,8 +118,9 @@ In `docs/chapter_in_silico.md`:
 - §3.7 (limits) — strike "static structures only" from limitations once
   Tier 3 is done.
 - §5 (results) — add per-protein paragraph: "MD over 50 ns confirms
-  Cys375 remains solvent-accessible (mean SASA = ... Å², range ... to
-  ...) and the bound-state RMSD ... ."
+  the SAM-pocket cysteine (Cys376; confirm the 375/376 assignment with
+  Stage 0, `00_verify_mettl3_cys.py`) remains solvent-accessible (mean
+  SASA = ... Å², range ... to ...) and the bound-state RMSD ... ."
 - §6 (discussion) — strengthen the METTL3 / FTO inhibition story with
   pose-stability evidence.
 - New §10 — "Molecular dynamics validation of top hits" — summary of

@@ -13,8 +13,13 @@
 
 METTL3:
   chain: A
-  anchors: [395, 396, 397, 398, 511, 538, 549]
-  description: SAM/SAH pocket; DPPW catalytic motif (D395-P396-P397-W398), E494 catalytic.
+  # 377 = SAM-binding Asp377, immediately adjacent to the SAM-pocket cysteine
+  # Cys376 (the literature / C376S-palmitoylation target). 395-398 = DPPW
+  # catalytic motif. Added 377 so functional_proximity scores the true pocket
+  # residue rather than only the distal DPPW motif. Run scripts/00_verify_mettl3_cys.py
+  # to confirm the 5IL0 author<->UniProt numbering (Cys375 vs Cys376) first.
+  anchors: [377, 395, 396, 397, 398, 511, 538, 549]
+  description: SAM/SAH pocket; SAM-binding Asp377 next to pocket Cys376; DPPW catalytic motif (D395-P396-P397-W398), E494 catalytic. Cys375 is the vicinal partner of Cys376.
 
 METTL14:
   chain: B

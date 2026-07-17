@@ -220,7 +220,7 @@ reviewer asks.
 - Zaccara S, Ries RJ, Jaffrey SR. "Reading, writing and erasing mRNA
   methylation." *Nat Rev Mol Cell Biol* 2019, 20(10):608–624.
 
-### D.2 METTL3–METTL14 writer complex (Cys375 region; DPPW catalytic motif)
+### D.2 METTL3–METTL14 writer complex (SAM-pocket Cys376 / Asp377; DPPW catalytic motif)
 
 **Citations** (HIGH confidence):
 - Liu J, Yue Y, Han D, et al. "A METTL3–METTL14 complex mediates
@@ -233,8 +233,28 @@ reviewer asks.
 
 The 2016 *Nature* and *Mol Cell* papers report the PDB structures
 (5IL0, 5IL1, 5IL2) that the pipeline uses for METTL3 and define the
-DPPW catalytic residues — critical for the METTL3 Cys375 / SAM pocket
+DPPW catalytic residues — the structural basis for the METTL3 SAM-pocket
 result in the chapter.
+
+**SAM-pocket cysteine identity (Cys376) — covalent-modification precedent:**
+- "Small-molecule enhancement of METTL3 S-palmitoylation as a therapeutic
+  strategy for osteoarthritis." *Cell Reports* 2026; article
+  S2211-1247(26)00071-9.
+  https://www.cell.com/cell-reports/fulltext/S2211-1247(26)00071-9
+  Reports that **Cys376** lies adjacent to the SAM-binding residue **Asp377**,
+  and that S-palmitoylation of Cys376 reduces SAM binding and methyltransferase
+  activity in wild-type METTL3 **but not in the C376S mutant**. This is the
+  direct precedent that covalent modification of Cys376 (not Cys375) inhibits
+  METTL3 by occluding the SAM pocket, and it motivates the Cys375↔Cys376
+  numbering reconciliation and the C376S wet-lab control in §5.2/§7.
+  *(Complete author list and DOI to be filled in from the published record.)*
+
+**Numbering note.** The pipeline copies residue numbers verbatim from the
+deposited 5IL0 file (no renumbering), so the first-pass "Cys375" is raw author
+numbering. `scripts/00_verify_mettl3_cys.py` reconciles the 5IL0 author
+numbering against UniProt Q86U44 (via the structure's DBREF record) to confirm
+whether the SAM-pocket thiol is Cys375, Cys376, or a genuine vicinal
+Cys375/Cys376 dithiol.
 
 ### D.3 Writer-complex partners (WTAP, VIRMA, ZC3H13, RBM15, CBLL1)
 

@@ -180,20 +180,34 @@ best_vina_dG = −2.472, min_func_proximity_A = 3.45.
 
 Tier: min_func_prox = 3.45 ≤ 6 → **likely_inhibitory** ✓
 
-### METTL3 Cys375 covalent_score = 2.000
+### METTL3 SAM-pocket cysteine covalent_score = 2.000
 
-From the data: vicinal partner Cys376 at 6.75 Å, func_prox 3.45 Å, pKa NA.
+> These worked values use the first-pass numbers (raw 5IL0 author numbering,
+> pocket cysteine reported as "Cys375", func_prox to the DPPW motif). The
+> residue label (Cys375 vs Cys376) and the func_prox value are re-derived by
+> Stage 0 (`00_verify_mettl3_cys.py`) and the Asp377 anchor added in
+> `functional_sites.yaml`; the arithmetic of the formula is unchanged.
+
+From the data: vicinal partner (Cys375/Cys376 pair) at 6.75 Å, func_prox
+3.45 Å, pKa NA.
 
 | Term | Value |
 |---|---|
 | 3.0 × tridentate | 0 (only 1 vicinal partner) |
-| 2.0 × bidentate | 0 (6.75 Å is outside 3.0–4.4 window) |
+| 2.0 × bidentate | 0 (static 6.75 Å is outside the 3.0–4.4 window) |
 | func_bonus | 2.0 (3.45 ≤ 6) |
 | 0.5 × thiolate | 0 (pKa NA) |
 | −0.5 × clashes | 0 |
 | **Total** | **2.000** ✓ |
 
-Binding mode: no bidentate, no tridentate → **monodentate** ✓
+Static binding mode: no bidentate, no tridentate → **monodentate**.
+
+Induced-fit check (new): the covalent scorer also reports
+`min_rotamer_sg_sg_A` and `bidentate_feasible_rotamer` — the minimum
+clash-free Sγ–Sγ distance reachable by rotating the Cys χ1 of both partners.
+If that value enters the 3.0–4.4 Å window, an As(III) **bidentate bridge**
+across the Cys375/Cys376 dithiol is feasible despite the 6.75 Å static gap,
+which strengthens the covalent-inhibition claim.
 
 ### TXN1 Cys32 covalent_score = 4.000
 
