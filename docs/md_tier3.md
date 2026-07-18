@@ -19,8 +19,11 @@ protein. MD addresses two specific limitations of that approach:
 Two MD modes are run per protein:
 
 ### A. Apo MD (50 ns)
-Protein in explicit water (TIP3P), 150 mM NaCl, AMBER ff19SB force
-field. Standard biomolecular protocol: energy minimisation → 100 ps NVT
+Protein in explicit water (OPC — the water model ff19SB was
+parameterised and validated against; GROMACS's own force-field docs
+recommend OPC/OPC3 over TIP3P for this force field), 150 mM NaCl,
+AMBER ff19SB force field. Standard biomolecular protocol: energy
+minimisation → 100 ps NVT
 equilibration at 310 K (position restraints on heavy atoms) → 100 ps
 NPT equilibration at 1 bar → 50 ns production with 2 fs timestep,
 LINCS constraints on hydrogen bonds, PME electrostatics.

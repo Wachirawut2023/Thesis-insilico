@@ -58,15 +58,25 @@ echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RES
 
 # Speed: use all CPU threads, offload non-bonded to GPU.
 NT=$(nproc)
-GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
+# No "-update gpu": OPC water uses a virtual site (massless MW), and
+# GROMACS's GPU update explicitly doesn't support virtual sites at all
+# ("Virtual sites are not supported") — this applies to every dynamical
+# step (NVT/NPT/production), not just EM, so update stays on CPU throughout.
+GPU_FLAGS="-nb gpu -pme gpu -bonded cpu"
 COMMON_RUN="-v -nt $NT $GPU_FLAGS"
+# EM uses a non-dynamical integrator (steep/cg) — GROMACS rejects GPU PME
+# for that (on top of the update restriction above), so EM can only
+# offload nonbonded to the GPU.
+EM_RUN="-v -nt $NT -nb gpu -bonded cpu"
 
 # ── 1. Topology generation ──
-# AMBER ff19SB protein + TIP3P water.
+# AMBER ff19SB protein + OPC water (ff19SB's authors recommend OPC/OPC3,
+# not TIP3P — GROMACS's own force-field docs say the same; ff19SB's CMAP
+# backbone corrections weren't validated against TIP3P).
 # -ignh strips existing hydrogens; pdb2gmx rebuilds them per the force field.
 echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
 echo "1" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
-  -i posre.itp -ff amber19sb -water tip3p -ignh \
+  -i posre.itp -ff amber19sb -water opc -ignh \
   >> "$LOG" 2>&1
 
 # ── 2. Define box ──
@@ -75,8 +85,11 @@ gmx editconf -f protein.gro -o protein_box.gro -c -d 1.0 -bt cubic \
   >> "$LOG" 2>&1
 
 # ── 3. Solvate ──
+# OPC is a 4-point model (OW/HW1/HW2/MW) like TIP4P, not 3-point like SPC —
+# the solvent box coordinate file's per-molecule atom count has to match,
+# so this must be tip4p.gro, not the default spc216.gro (3-point).
 echo "[md] step 3: solvate" | tee -a "$LOG"
-gmx solvate -cp protein_box.gro -cs spc216.gro -o protein_solv.gro -p topol.top \
+gmx solvate -cp protein_box.gro -cs tip4p.gro -o protein_solv.gro -p topol.top \
   >> "$LOG" 2>&1
 
 # ── 4. Add ions for neutrality + 150 mM NaCl ──
@@ -107,7 +120,7 @@ fi
 echo "[md] step 5: energy minimization" | tee -a "$LOG"
 gmx grompp -f "$MDP_DIR/em.mdp" -c "$START_GRO" -p topol.top -o em.tpr -maxwarn 2 \
   >> "$LOG" 2>&1
-gmx mdrun -deffnm em $COMMON_RUN \
+gmx mdrun -deffnm em $EM_RUN \
   >> "$LOG" 2>&1
 
 # ── 6. NVT equilibration ──

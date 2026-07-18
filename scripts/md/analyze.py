@@ -32,17 +32,22 @@ def analyse(gene: str, mode: str, run_dir: Path) -> int:
     import MDAnalysis as mda
     from MDAnalysis.analysis import rms
 
-    tpr = run_dir / "md.tpr"
+    # Use the .gro (not .tpr) as topology: MDAnalysis's TPRParser lags
+    # GROMACS's .tpr binary format (tpx version) by a release or more, and
+    # none of this script's analyses (RMSD/RMSF/SASA) need GROMACS's bonded
+    # topology — just atom names/coordinates, which .gro has and which
+    # match md.xtc's atom order exactly (same run, same deffnm).
+    gro = run_dir / "md.gro"
     xtc = run_dir / "md.xtc"
-    if not tpr.exists() or not xtc.exists():
-        print(f"ERROR: missing md.tpr or md.xtc in {run_dir}", file=sys.stderr)
+    if not gro.exists() or not xtc.exists():
+        print(f"ERROR: missing md.gro or md.xtc in {run_dir}", file=sys.stderr)
         return 1
 
     out_dir = run_dir / "analysis"
     out_dir.mkdir(exist_ok=True)
 
     print(f"[analyze] loading trajectory: {xtc.name}")
-    u = mda.Universe(str(tpr), str(xtc))
+    u = mda.Universe(str(gro), str(xtc))
     n_frames = len(u.trajectory)
     n_residues = u.select_atoms("protein").n_residues
     print(f"[analyze] {n_frames} frames, {n_residues} residues")
