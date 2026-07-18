@@ -52,11 +52,14 @@ bash /tmp/miniforge.sh -b -p /opt/miniforge
 source /opt/miniforge/etc/profile.d/conda.sh
 
 # 3. Create the MD environment (GROMACS with GPU, MDAnalysis, freesasa).
-# Pin cuda-version explicitly -- without it, conda-forge's solver can pick
-# GROMACS' OpenCL build instead of CUDA, which then fails at mdrun with
-# "no GPU is detected" on GPUs without a working OpenCL ICD.
+# Note: conda-forge's GROMACS build offloads to GPU via OpenCL (not CUDA).
+# If `gmx --version | grep GPU` shows the backend but mdrun still errors
+# with "no GPU is detected", the OpenCL ICD isn't registered for the
+# driver -- check /etc/OpenCL/vendors/ for an .icd file naming
+# libnvidia-opencl.so; RunPod's stock images normally have this already,
+# but if not, `find / -name libnvidia-opencl.so*` and write its path into
+# /etc/OpenCL/vendors/nvidia.icd.
 mamba create -n md -c conda-forge -y \
-    "cuda-version>=12,<13" \
     gromacs=2024 \
     python=3.11 \
     mdanalysis \

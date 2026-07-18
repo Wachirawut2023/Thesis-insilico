@@ -14,6 +14,7 @@
 #          GENES_FILTER="TXN1,PIN1" bash run_all.sh     # subset
 #          MODES_FILTER="apo" bash run_all.sh           # apo only
 #          MD_MAXH=5 bash run_all.sh                    # cap each run's production step at 5h wall time
+#          MD_GPU=0 bash run_all.sh                      # CPU-only (GPU backend can't see a device)
 
 set -euo pipefail
 

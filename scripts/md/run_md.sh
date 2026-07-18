@@ -10,7 +10,11 @@
 #   bash run_md.sh TXN1 bound A 32 35       # bidentate with partner
 #
 # Requires:
-#   - GROMACS 2024+ (gmx in PATH, built with CUDA)
+#   - GROMACS 2024+ (gmx in PATH). GPU offload is used by default (via
+#     whichever backend your GROMACS build supports — CUDA or OpenCL); set
+#     MD_GPU=0 to force CPU-only if the GPU backend can't see a device in
+#     your environment (much slower — a last resort, e.g.:
+#     MD_GPU=0 bash run_md.sh TXN1 apo).
 #   - Input PDB at /opt/Thesis-insilico/data/prepared/<gene>.clean.pdb
 #   - The mdp/ files in this directory
 #
@@ -47,6 +51,9 @@ MD_MAXH="${MD_MAXH:-0}"
 # Checkpoint-write interval in minutes (gmx mdrun -cpt). Shorter = less lost
 # work on an abrupt kill, at the cost of a bit more I/O.
 MD_CPT_MIN="${MD_CPT_MIN:-5}"
+# Set to 0 to force CPU-only mdrun (e.g. if GROMACS' OpenCL GPU backend
+# can't see the GPU in this container — very slow, last resort).
+MD_GPU="${MD_GPU:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MDP_DIR="$SCRIPT_DIR/mdp"
@@ -82,12 +89,18 @@ echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RES
 
 # Speed: use all CPU threads, offload non-bonded to GPU.
 NT=$(nproc)
-GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
+if [ "$MD_GPU" = "1" ]; then
+  GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
+  # Energy minimization (em.mdp, integrator=steep) cannot use GPU PME/update —
+  # GROMACS requires a dynamical integrator (md/sd/bd) for those; steepest
+  # descent fails with "PME GPU does not support: Non-dynamical integrator".
+  EM_FLAGS="-nb gpu -bonded cpu"
+else
+  GPU_FLAGS="-nb cpu -pme cpu -bonded cpu"
+  EM_FLAGS="$GPU_FLAGS"
+fi
 COMMON_RUN="-v -nt $NT $GPU_FLAGS -cpt $MD_CPT_MIN"
-# Energy minimization (em.mdp, integrator=steep) cannot use GPU PME/update —
-# GROMACS requires a dynamical integrator (md/sd/bd) for those; steepest
-# descent fails with "PME GPU does not support: Non-dynamical integrator".
-COMMON_RUN_EM="-v -nt $NT -nb gpu -bonded cpu -cpt $MD_CPT_MIN"
+COMMON_RUN_EM="-v -nt $NT $EM_FLAGS -cpt $MD_CPT_MIN"
 
 # ── 0. Repair missing heavy atoms ──
 # Crystal structures (e.g. METTL3/METTL14, FTO, ALKBH5) commonly have

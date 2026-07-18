@@ -53,13 +53,16 @@ write_files:
       git checkout "$BRANCH"
       git pull --ff-only
 
-      # 4. MD environment — GROMACS with CUDA support + analysis libs.
-      # Pin cuda-version explicitly -- without it, conda-forge's solver can
-      # pick GROMACS' OpenCL build instead of CUDA, which then fails at
-      # mdrun with "no GPU is detected" on GPUs without a working OpenCL ICD.
+      # 4. MD environment — GROMACS + analysis libs. Note: conda-forge's
+      # GROMACS build offloads to GPU via OpenCL (not CUDA). If mdrun
+      # errors with "no GPU is detected" despite gmx --version showing a
+      # GPU backend, the OpenCL ICD isn't registered -- check
+      # /etc/OpenCL/vendors/ for a .icd file naming libnvidia-opencl.so;
+      # GCP's Deep Learning VM image normally registers this already, but
+      # if not, `find / -name libnvidia-opencl.so*` and write its path
+      # into /etc/OpenCL/vendors/nvidia.icd.
       if ! conda env list | grep -q '^md'; then
         mamba create -n md -c conda-forge -y \
-          "cuda-version>=12,<13" \
           gromacs=2024 \
           python=3.11 \
           mdanalysis \
