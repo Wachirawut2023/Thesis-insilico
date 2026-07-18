@@ -58,6 +58,7 @@ mamba create -n md -c conda-forge -y \
     mdanalysis \
     freesasa \
     biopython \
+    pdbfixer \
     matplotlib \
     pandas \
     numpy \

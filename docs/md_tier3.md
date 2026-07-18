@@ -16,6 +16,15 @@ protein. MD addresses two specific limitations of that approach:
    arsenic at the predicted cysteine, or does it distort / dissociate
    in dynamics?
 
+Before either mode, each receptor PDB is passed through PDBFixer to add
+missing heavy atoms in residues with unresolved side-chain density beyond
+Cβ (common in the crystal structures used here, e.g. surface Gln/Lys/Arg/
+Glu) — `gmx pdb2gmx` can only generate missing *hydrogens*, not heavy
+atoms, and otherwise fails outright on any residue that doesn't match its
+template exactly. Missing residues/loops are left as real structural gaps
+(not modelled in), and chain IDs/residue numbers are preserved exactly so
+the covalent-anchor residue numbering from Tier 1-2 stays valid.
+
 Two MD modes are run per protein:
 
 ### A. Apo MD (50 ns)

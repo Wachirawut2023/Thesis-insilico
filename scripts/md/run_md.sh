@@ -84,6 +84,26 @@ echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RES
 NT=$(nproc)
 GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
 COMMON_RUN="-v -nt $NT $GPU_FLAGS -cpt $MD_CPT_MIN"
+# Energy minimization (em.mdp, integrator=steep) cannot use GPU PME/update —
+# GROMACS requires a dynamical integrator (md/sd/bd) for those; steepest
+# descent fails with "PME GPU does not support: Non-dynamical integrator".
+COMMON_RUN_EM="-v -nt $NT -nb gpu -bonded cpu -cpt $MD_CPT_MIN"
+
+# ── 0. Repair missing heavy atoms ──
+# Crystal structures (e.g. METTL3/METTL14, FTO, ALKBH5) commonly have
+# unresolved side-chain density beyond Cβ for surface residues. gmx pdb2gmx
+# can only add missing *hydrogens* (-ignh) — a missing heavy atom (e.g.
+# Gln's CG) makes it fail outright with "atom CG ... not found". Run every
+# receptor through PDBFixer first so this doesn't silently vary by protein.
+FIXED_PDB="protein_fixed.pdb"
+if [ -f "$FIXED_PDB" ]; then
+  echo "[md] step 0: repair missing heavy atoms — already done, skipping" | tee -a "$LOG"
+else
+  echo "[md] step 0: repair missing heavy atoms (PDBFixer)" | tee -a "$LOG"
+  python3 "$SCRIPT_DIR/fix_missing_atoms.py" --in-pdb "$PDB_IN" --out-pdb "$FIXED_PDB" \
+    >> "$LOG" 2>&1
+fi
+PDB_FOR_GMX="$RUN_DIR/$FIXED_PDB"
 
 # ── 1. Topology generation ──
 # AMBER ff99SB-ILDN protein + TIP3P water. (Originally targeted ff19SB, but
@@ -98,7 +118,7 @@ if [ -f protein.gro ]; then
   echo "[md] step 1: pdb2gmx — already done, skipping" | tee -a "$LOG"
 else
   echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
-  echo "1" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
+  echo "1" | gmx pdb2gmx -f "$PDB_FOR_GMX" -o protein.gro -p topol.top \
     -i posre.itp -ff amber99sb-ildn -water tip3p -ignh \
     >> "$LOG" 2>&1
 fi
@@ -160,7 +180,7 @@ else
   echo "[md] step 5: energy minimization" | tee -a "$LOG"
   gmx grompp -f "$MDP_DIR/em.mdp" -c "$START_GRO" -p topol.top -o em.tpr -maxwarn 2 \
     >> "$LOG" 2>&1
-  gmx mdrun -deffnm em $COMMON_RUN \
+  gmx mdrun -deffnm em $COMMON_RUN_EM \
     >> "$LOG" 2>&1
 fi
 
