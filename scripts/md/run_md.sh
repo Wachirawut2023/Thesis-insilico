@@ -86,14 +86,20 @@ GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
 COMMON_RUN="-v -nt $NT $GPU_FLAGS -cpt $MD_CPT_MIN"
 
 # ── 1. Topology generation ──
-# AMBER ff19SB protein + TIP3P water.
+# AMBER ff99SB-ILDN protein + TIP3P water. (Originally targeted ff19SB, but
+# that force field was never ported into GROMACS' native .ff directory
+# format and isn't bundled by any stock GROMACS build, including
+# conda-forge's — pdb2gmx fails with "Could not find force field 'amber19sb'"
+# on every install. ff99SB-ILDN ships built into GROMACS itself, needs no
+# extra setup, and is one of the most validated general protein force
+# fields — a solid choice for a pose-stability screen like this one.)
 # -ignh strips existing hydrogens; pdb2gmx rebuilds them per the force field.
 if [ -f protein.gro ]; then
   echo "[md] step 1: pdb2gmx — already done, skipping" | tee -a "$LOG"
 else
   echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
   echo "1" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
-    -i posre.itp -ff amber19sb -water tip3p -ignh \
+    -i posre.itp -ff amber99sb-ildn -water tip3p -ignh \
     >> "$LOG" 2>&1
 fi
 

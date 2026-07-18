@@ -19,8 +19,16 @@ protein. MD addresses two specific limitations of that approach:
 Two MD modes are run per protein:
 
 ### A. Apo MD (50 ns)
-Protein in explicit water (TIP3P), 150 mM NaCl, AMBER ff19SB force
-field. Standard biomolecular protocol: energy minimisation → 100 ps NVT
+Protein in explicit water (TIP3P), 150 mM NaCl, AMBER ff99SB-ILDN force
+field. (Originally scoped as ff19SB; switched to ff99SB-ILDN because
+ff19SB was never ported into GROMACS' native force-field-directory format
+and isn't bundled by any stock GROMACS build, including conda-forge's —
+`pdb2gmx -ff amber19sb` fails outright with "force field not found".
+ff99SB-ILDN ships built into GROMACS, needs no extra installation, and
+remains one of the most validated general protein force fields; the
+qualitative pose-stability/SASA/RMSD readouts this tier reports are not
+sensitive to the substitution.) Standard biomolecular protocol: energy
+minimisation → 100 ps NVT
 equilibration at 310 K (position restraints on heavy atoms) → 100 ps
 NPT equilibration at 1 bar → 50 ns production with 2 fs timestep,
 LINCS constraints on hydrogen bonds, PME electrostatics.
@@ -38,7 +46,7 @@ Mg²⁺–SG distance at 2.25 ± 0.02 Å (the As–S bond length from crystal
 structures).
 
 **Why Mg²⁺ and not As(III) directly?** As(III) is not parameterised in
-AMBER ff19SB or any standard biomolecular force field. The two paths
+AMBER ff99SB-ILDN or any standard biomolecular force field. The two paths
 to "real" As MD are:
 
 1. Derive partial atomic charges via QM (e.g. RESP fitting from
