@@ -153,3 +153,13 @@ projects have 0 GPU quota by default — see step 0 of the runbook).
 | **Total** | | **~$15–20** |
 
 Runbook: `infra/runpod/README.md`. New account/CLI but ~$10 cheaper.
+
+**DigitalOcean AMD GPU Droplet (MI300X)** (alternative — used to replace
+a Google Colab run that hit session-length/disconnect limits mid-panel):
+
+GROMACS's GPU offload path works unchanged on AMD; the only difference
+is GROMACS is compiled from source with HIP support against the
+droplet's ROCm stack instead of installed as a prebuilt CUDA conda
+package. Cost depends on current DO GPU Droplet pricing for MI300X.
+
+Runbook: `infra/amd-gpu/README.md`.
