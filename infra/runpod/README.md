@@ -51,8 +51,12 @@ curl -L -o /tmp/miniforge.sh \
 bash /tmp/miniforge.sh -b -p /opt/miniforge
 source /opt/miniforge/etc/profile.d/conda.sh
 
-# 3. Create the MD environment (GROMACS with GPU, MDAnalysis, freesasa)
+# 3. Create the MD environment (GROMACS with GPU, MDAnalysis, freesasa).
+# Pin cuda-version explicitly -- without it, conda-forge's solver can pick
+# GROMACS' OpenCL build instead of CUDA, which then fails at mdrun with
+# "no GPU is detected" on GPUs without a working OpenCL ICD.
 mamba create -n md -c conda-forge -y \
+    "cuda-version>=12,<13" \
     gromacs=2024 \
     python=3.11 \
     mdanalysis \

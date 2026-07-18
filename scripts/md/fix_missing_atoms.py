@@ -1,17 +1,29 @@
-"""Repair missing heavy atoms in a receptor PDB before gmx pdb2gmx.
+"""Clean up a receptor PDB for gmx pdb2gmx: strip cofactor HETATMs and
+repair missing heavy atoms.
 
-Crystal structures commonly have unresolved side-chain density beyond Cβ
-for surface-exposed residues (Gln, Lys, Arg, Glu...). gmx pdb2gmx can only
-generate missing *hydrogens* (-ignh) — it has no mechanism to rebuild a
-missing heavy atom, and fails outright ("atom CG ... not found") when a
+02_prepare_receptors.py deliberately keeps catalytic cofactor HETATMs
+(SAM, Fe, 2OG, Zn, Mg, m6A...) for Tier 1-2's docking/geometric analysis.
+gmx pdb2gmx has no residue templates for those and can't process them —
+worse, they show up as spurious 1-atom "chains" that make it fail outright
+("This chain does not appear to contain a recognized chain molecule").
+Per docs/md_tier3.md, Tier-3 MD doesn't model natural cofactor chemistry
+anyway (arsenic binding is tested via a Mg2+ surrogate + distance
+restraints, not the real cofactor), so cofactors are simply removed before
+gmx sees the structure.
+
+Crystal structures also commonly have unresolved side-chain density beyond
+Cβ for surface-exposed residues (Gln, Lys, Arg, Glu...). gmx pdb2gmx can
+only generate missing *hydrogens* (-ignh) — it has no mechanism to rebuild
+a missing heavy atom, and fails outright ("atom CG ... not found") when a
 present residue doesn't match its template atom-for-atom.
 
-This only fills in missing atoms *within residues that are present* — it
-deliberately does not model in missing residues/loops (real structural
-gaps are left alone) and does not add hydrogens (pdb2gmx does that itself,
-per the target force field). Chain IDs and residue numbers are preserved
-exactly (`keepIds=True`) since downstream stages (covalent-anchor lookup,
-the Mg surrogate placement) key off the original crystal numbering.
+Heavy-atom repair only fills in atoms *within residues that are present*
+— it deliberately does not model in missing residues/loops (real
+structural gaps are left alone) and does not add hydrogens (pdb2gmx does
+that itself, per the target force field). Chain IDs and residue numbers
+are preserved exactly (`keepIds=True`) since downstream stages
+(covalent-anchor lookup, the Mg surrogate placement) key off the original
+crystal numbering.
 """
 from __future__ import annotations
 
@@ -37,6 +49,7 @@ def main() -> int:
         return 1
 
     fixer = PDBFixer(filename=args.in_pdb)
+    fixer.removeHeterogens(keepWater=False)
     fixer.findMissingResidues()
     # Only repair atoms within residues already present in the structure;
     # do not model in missing loops/termini as new residues.

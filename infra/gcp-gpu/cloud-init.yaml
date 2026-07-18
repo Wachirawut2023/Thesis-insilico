@@ -53,9 +53,13 @@ write_files:
       git checkout "$BRANCH"
       git pull --ff-only
 
-      # 4. MD environment — GROMACS with CUDA support + analysis libs
+      # 4. MD environment — GROMACS with CUDA support + analysis libs.
+      # Pin cuda-version explicitly -- without it, conda-forge's solver can
+      # pick GROMACS' OpenCL build instead of CUDA, which then fails at
+      # mdrun with "no GPU is detected" on GPUs without a working OpenCL ICD.
       if ! conda env list | grep -q '^md'; then
         mamba create -n md -c conda-forge -y \
+          "cuda-version>=12,<13" \
           gromacs=2024 \
           python=3.11 \
           mdanalysis \
