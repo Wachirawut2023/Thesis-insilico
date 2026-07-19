@@ -80,9 +80,31 @@ EM_RUN="-v -nt $NT -nb gpu -bonded cpu"
 # -missing, pdb2gmx fatal-errors instead of rebuilding those atoms; with
 # it, the missing heavy atoms are added by ideal geometry and relaxed by
 # the EM step that already runs right after this.
+#
+# Genes needing an explicit histidine protonation state: pdb2gmx's
+# automatic detector (hizzie) infers HID/HIE/HIP from each histidine's
+# local H-bonding, but needs the ring atoms present to do it — checked
+# ring completeness only, before -missing gets a chance to rebuild them.
+# A histidine with the whole ring unresolved in the crystal structure
+# (not just CB, like the -missing cases above) fails "Incomplete ring"
+# even with -missing. -his forces interactive selection for *every*
+# histidine in the structure (pdb2gmx has no per-residue override), so
+# only opt genes into this when they actually hit that error — for
+# everything else, automatic per-residue detection is the better default.
+# User-approved default for the current case (METTL3/HIS116, ring fully
+# absent, not obviously catalytic): HIE for all of METTL3's histidines.
+FORCE_HIE_GENES=" METTL3 "
+PDB2GMX_STDIN="1"
+if [[ "$FORCE_HIE_GENES" == *" $GENE "* ]]; then
+  N_HIS=$(awk '$1=="ATOM" && $4=="HIS" {print substr($0,22,1) substr($0,23,4)}' "$PDB_IN" | sort -u | wc -l)
+  PDB2GMX_HIS_FLAG="-his"
+  PDB2GMX_STDIN="$(printf '1\n%.0s' $(seq 1 $((N_HIS + 1))))"
+else
+  PDB2GMX_HIS_FLAG=""
+fi
 echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
-echo "1" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
-  -i posre.itp -ff amber19sb -water opc -ignh -missing \
+echo "$PDB2GMX_STDIN" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
+  -i posre.itp -ff amber19sb -water opc -ignh -missing $PDB2GMX_HIS_FLAG \
   >> "$LOG" 2>&1
 
 # ── 2. Define box ──
