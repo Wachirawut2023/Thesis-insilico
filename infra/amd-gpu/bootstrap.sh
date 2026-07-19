@@ -72,6 +72,13 @@ if ! conda env list | grep -q '^md'; then
     pyyaml
 fi
 conda activate md
+# pdbfixer/openmm: used by scripts/md/fix_missing_atoms.py as a more
+# robust alternative to pdb2gmx's `-missing` for a handful of targets
+# (e.g. FTO) where `-missing`'s ideal-geometry filler produces NaN
+# coordinates. Not in the mamba create list above since it was added
+# after that env already existed on this droplet — pip install is
+# idempotent so this is safe to leave in the bootstrap either way.
+python3 -c "import pdbfixer" 2>/dev/null || pip install pdbfixer
 
 # 3. Build GROMACS with HIP (AMD GPU) support from source.
 # Uses the system ROCm install. Preinstalled on DigitalOcean's AI/ML-ready

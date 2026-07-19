@@ -56,6 +56,21 @@ cd "$RUN_DIR"
 LOG="$RUN_DIR/run.log"
 echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RESI partner=$PARTNER_RESI" | tee -a "$LOG"
 
+# Genes needing PDBFixer instead of pdb2gmx's `-missing` for rebuilding
+# missing heavy side-chain atoms: on FTO, `-missing`'s ideal-geometry
+# filler produced NaN coordinates for one hydrogen on 3 disordered
+# residues (LYS121, ASP189, GLN499-Cterm), which corrupted every step
+# downstream. PDBFixer's placement is more robust for these same cases.
+# Gene-scoped opt-in (like FORCE_HIE_GENES below) since pdb2gmx's
+# `-missing` is fine — faster, no extra dependency — everywhere else.
+PDBFIXER_GENES=" FTO "
+if [[ "$PDBFIXER_GENES" == *" $GENE "* ]]; then
+  echo "[md] step 0: PDBFixer pre-pass (rebuild missing heavy atoms)" | tee -a "$LOG"
+  python3 "$SCRIPT_DIR/fix_missing_atoms.py" --in-pdb "$PDB_IN" --out-pdb "$RUN_DIR/${GENE}.pdbfixer.pdb" \
+    >> "$LOG" 2>&1
+  PDB_IN="$RUN_DIR/${GENE}.pdbfixer.pdb"
+fi
+
 # Speed: use all CPU threads, offload non-bonded to GPU.
 NT=$(nproc)
 # No "-update gpu": OPC water uses a virtual site (massless MW), and
