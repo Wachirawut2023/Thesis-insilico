@@ -33,19 +33,38 @@ FORCE_CONST = 1000  # kJ/mol/nm^2 — harmonic distance restraint stiffness
 
 
 def parse_gro(path: Path) -> tuple[list[str], list[dict], str]:
-    """Return (header_lines, atom_records, box_line). GRO format is fixed-width."""
+    """Return (header_lines, atom_records, box_line). GRO format is fixed-width.
+
+    resi/serial are 5-digit fields; GROMACS itself wraps both mod 100000 once
+    a system exceeds 99999 atoms/residues (residue and atom numbers reset to
+    0 and count back up). We track those wraps here so callers can recover
+    the true (unwrapped) counts — needed to place a new atom after the last
+    one without overflowing the fixed-width columns again.
+    """
     lines = path.read_text().splitlines()
     title = lines[0]
     n_atoms = int(lines[1].strip())
     atoms: list[dict] = []
+    resi_wraps = 0
+    serial_wraps = 0
+    prev_resi = prev_serial = None
     for i in range(2, 2 + n_atoms):
         ln = lines[i]
+        resi_field = int(ln[0:5])
+        serial_field = int(ln[15:20])
+        if prev_resi is not None and resi_field < prev_resi:
+            resi_wraps += 1
+        if prev_serial is not None and serial_field < prev_serial:
+            serial_wraps += 1
+        prev_resi, prev_serial = resi_field, serial_field
         atoms.append({
             "raw": ln,
-            "resi": int(ln[0:5]),
+            "resi": resi_field,
+            "resi_true": resi_field + resi_wraps * 100000,
             "resn": ln[5:10].strip(),
             "atom": ln[10:15].strip(),
-            "serial": int(ln[15:20]),
+            "serial": serial_field,
+            "serial_true": serial_field + serial_wraps * 100000,
             "x": float(ln[20:28]),
             "y": float(ln[28:36]),
             "z": float(ln[36:44]),
@@ -126,11 +145,14 @@ def write_gro(header: list[str], atoms: list[dict], extra: list[dict], box: str,
     lines = [header[0], str(new_total)]
     for a in atoms:
         lines.append(a["raw"])
-    last_resi = max((a["resi"] for a in atoms), default=0)
-    last_serial = max((a["serial"] for a in atoms), default=0)
+    last_resi = atoms[-1]["resi_true"] if atoms else 0
+    last_serial = atoms[-1]["serial_true"] if atoms else 0
     for i, e in enumerate(extra, start=1):
-        resi = last_resi + i
-        serial = last_serial + i
+        # Wrap the same way GROMACS does (mod 100000) so the 5-digit
+        # columns never overflow, even though the true counts (used above
+        # for last_resi/last_serial) may already exceed 99999.
+        resi = (last_resi + i) % 100000
+        serial = (last_serial + i) % 100000
         # GRO line: %5d%-5s%5s%5d%8.3f%8.3f%8.3f
         line = f"{resi:5d}{'MG':<5s}{'MG':>5s}{serial:5d}{e['x']:8.3f}{e['y']:8.3f}{e['z']:8.3f}"
         lines.append(line)
@@ -223,7 +245,9 @@ def main() -> int:
     extra = [{"x": pos[0], "y": pos[1], "z": pos[2]}]
     write_gro(header, atoms, extra, box, args.out_gro)
     append_topol(args.topol, n_mg=1)
-    mg_serial = atoms[-1]["serial"] + 1
+    # Use the same true-count + wrap logic as write_gro so this matches the
+    # serial actually written into the .gro file's fixed-width column.
+    mg_serial = (atoms[-1]["serial_true"] + 1) % 100000 if atoms else 1
     write_restraints(args.topol.parent, anchor_sg["serial"], partner_serial, mg_serial)
     print(f"[place_as_surrogate] wrote {args.out_gro}")
     return 0

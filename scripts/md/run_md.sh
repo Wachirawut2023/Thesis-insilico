@@ -74,9 +74,15 @@ EM_RUN="-v -nt $NT -nb gpu -bonded cpu"
 # not TIP3P — GROMACS's own force-field docs say the same; ff19SB's CMAP
 # backbone corrections weren't validated against TIP3P).
 # -ignh strips existing hydrogens; pdb2gmx rebuilds them per the force field.
+# -missing: several targets (e.g. METTL3, FTO, ALKBH5) have surface
+# side chains unresolved past CB in the crystal structure (high B-factor
+# disorder, not a data-prep bug — checked the raw PDBs directly). Without
+# -missing, pdb2gmx fatal-errors instead of rebuilding those atoms; with
+# it, the missing heavy atoms are added by ideal geometry and relaxed by
+# the EM step that already runs right after this.
 echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
 echo "1" | gmx pdb2gmx -f "$PDB_IN" -o protein.gro -p topol.top \
-  -i posre.itp -ff amber19sb -water opc -ignh \
+  -i posre.itp -ff amber19sb -water opc -ignh -missing \
   >> "$LOG" 2>&1
 
 # ── 2. Define box ──
