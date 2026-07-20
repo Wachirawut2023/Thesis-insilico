@@ -166,3 +166,13 @@ droplet's ROCm stack instead of installed as a prebuilt CUDA conda
 package. Cost depends on current DO GPU Droplet pricing for MI300X.
 
 Runbook: `infra/amd-gpu/README.md`.
+
+**Known issue — production-step OOM on long runs**: on the MI300X
+droplet, `gmx mdrun`'s production step has OOM-killed 3 separate times
+(different genes/system sizes), always late in the run (83-91% of
+steps) at ~176GB RSS — consistent with an in-process memory leak in
+this GROMACS 2026.3 build tied to simulation progress rather than a
+one-off hardware hiccup. `run_md.sh` now runs production in
+`PROD_MAXH_HOURS`-long (default 2h) segments via `-maxh` + checkpoint
+resume so no single process runs long enough to reach the failure
+point — same output trajectory, just restarted periodically.

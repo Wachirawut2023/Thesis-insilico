@@ -181,11 +181,44 @@ gmx mdrun -deffnm npt $COMMON_RUN \
   >> "$LOG" 2>&1
 
 # ── 8. Production ──
-echo "[md] step 8: production 50 ns (this is the long step, ~3-4 hr on RTX 4090)" | tee -a "$LOG"
+# Segmented via periodic -maxh restarts + checkpoint resume. Three independent
+# OOM kills on this droplet (PIN1_bound, GAPDH/apo, CBLL1/apo) all died at
+# ~176GB RSS (anon-rss + shmem-rss together ~= this box's 235GB physical RAM)
+# late in their respective runs (83-91% of steps) regardless of system size
+# (27k-609k atoms) — consistent with an in-process memory leak in this
+# GROMACS 2026.3 build that scales with simulation progress (frames written?),
+# not wall time or atom count. A fresh mdrun process starts with a clean heap,
+# so capping each process to PROD_MAXH_HOURS and resuming from checkpoint
+# keeps RSS well clear of the failure point without changing the resulting
+# trajectory at all (this is the same recovery already used manually after
+# each of the 3 OOMs above, just made automatic/pre-emptive).
+PROD_MAXH_HOURS="${PROD_MAXH_HOURS:-2}"
+echo "[md] step 8: production 50 ns (segmented, ${PROD_MAXH_HOURS}h per mdrun process)" | tee -a "$LOG"
 gmx grompp -f "$MDP_DIR/md.mdp" -c npt.gro -t npt.cpt -p topol.top -o md.tpr -maxwarn 2 \
   >> "$LOG" 2>&1
-gmx mdrun -deffnm md $COMMON_RUN \
-  >> "$LOG" 2>&1
+
+PROD_MAX_SEGMENTS=50
+seg=0
+while [ ! -f md.gro ]; do
+  seg=$((seg + 1))
+  if [ "$seg" -gt "$PROD_MAX_SEGMENTS" ]; then
+    echo "[md] production aborted: exceeded $PROD_MAX_SEGMENTS restart segments without reaching md.gro" | tee -a "$LOG"
+    exit 1
+  fi
+  if [ -f md.cpt ]; then
+    echo "[md] production segment $seg (resuming from checkpoint)" | tee -a "$LOG"
+    gmx mdrun -deffnm md -cpi md.cpt -append -maxh "$PROD_MAXH_HOURS" $COMMON_RUN \
+      >> "$LOG" 2>&1 || true
+  else
+    echo "[md] production segment $seg (fresh start)" | tee -a "$LOG"
+    gmx mdrun -deffnm md -maxh "$PROD_MAXH_HOURS" $COMMON_RUN \
+      >> "$LOG" 2>&1 || true
+  fi
+  if [ ! -f md.gro ] && [ ! -f md.cpt ]; then
+    echo "[md] production segment $seg failed before writing any checkpoint — aborting" | tee -a "$LOG"
+    exit 1
+  fi
+done
 
 echo "[md] DONE $(date -Is)  $GENE/$MODE" | tee -a "$LOG"
 ls -lh md.* | tee -a "$LOG"
