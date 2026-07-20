@@ -61,9 +61,14 @@ echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RES
 # filler produced NaN coordinates for one hydrogen on 3 disordered
 # residues (LYS121, ASP189, GLN499-Cterm), which corrupted every step
 # downstream. PDBFixer's placement is more robust for these same cases.
-# Gene-scoped opt-in (like FORCE_HIE_GENES below) since pdb2gmx's
-# `-missing` is fine — faster, no extra dependency — everywhere else.
-PDBFIXER_GENES=" FTO "
+# ALKBH5 hits the identical failure mode (confirmed 2026-07-20: NaN in
+# protein.gro for 8 disordered-residue hydrogens — LEU76/GLN77/GLU80/
+# LYS84/ARG93/LYS231/ARG238/GLU293 — which pdb2gmx's exit-0 status alone
+# didn't surface; the earlier ALKBH5 verification only checked pdb2gmx's
+# exit code, not downstream coordinates). Gene-scoped opt-in (like
+# FORCE_HIE_GENES below) since pdb2gmx's `-missing` is fine — faster, no
+# extra dependency — everywhere else.
+PDBFIXER_GENES=" FTO ALKBH5 "
 if [[ "$PDBFIXER_GENES" == *" $GENE "* ]]; then
   echo "[md] step 0: PDBFixer pre-pass (rebuild missing heavy atoms)" | tee -a "$LOG"
   python3 "$SCRIPT_DIR/fix_missing_atoms.py" --in-pdb "$PDB_IN" --out-pdb "$RUN_DIR/${GENE}.pdbfixer.pdb" \
@@ -72,7 +77,9 @@ if [[ "$PDBFIXER_GENES" == *" $GENE "* ]]; then
 fi
 
 # Speed: use all CPU threads, offload non-bonded to GPU.
-NT=$(nproc)
+# NT is overridable so a second, smaller job can share the box with a
+# larger already-running one without fully oversubscribing the CPU.
+NT="${NT:-$(nproc)}"
 # No "-update gpu": OPC water uses a virtual site (massless MW), and
 # GROMACS's GPU update explicitly doesn't support virtual sites at all
 # ("Virtual sites are not supported") — this applies to every dynamical
