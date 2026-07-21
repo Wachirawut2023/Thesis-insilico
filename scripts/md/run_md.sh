@@ -65,10 +65,13 @@ echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RES
 # protein.gro for 8 disordered-residue hydrogens — LEU76/GLN77/GLU80/
 # LYS84/ARG93/LYS231/ARG238/GLU293 — which pdb2gmx's exit-0 status alone
 # didn't surface; the earlier ALKBH5 verification only checked pdb2gmx's
-# exit code, not downstream coordinates). Gene-scoped opt-in (like
-# FORCE_HIE_GENES below) since pdb2gmx's `-missing` is fine — faster, no
-# extra dependency — everywhere else.
-PDBFIXER_GENES=" FTO ALKBH5 "
+# exit code, not downstream coordinates). METTL3 hits it too (confirmed
+# 2026-07-21: NaN in protein.gro for GLU181's HB2 — only surfaced now
+# because METTL3 previously fatal-errored earlier, at HIS116's ring
+# check, before -missing even got a chance to place this atom). Gene-scoped
+# opt-in (like FORCE_HIE_GENES below) since pdb2gmx's `-missing` is fine —
+# faster, no extra dependency — everywhere else.
+PDBFIXER_GENES=" FTO ALKBH5 METTL3 "
 if [[ "$PDBFIXER_GENES" == *" $GENE "* ]]; then
   echo "[md] step 0: PDBFixer pre-pass (rebuild missing heavy atoms)" | tee -a "$LOG"
   python3 "$SCRIPT_DIR/fix_missing_atoms.py" --in-pdb "$PDB_IN" --out-pdb "$RUN_DIR/${GENE}.pdbfixer.pdb" \
