@@ -10,8 +10,8 @@
 #   bash run_md.sh TXN1 bound A 32 35       # bidentate with partner
 #
 # Requires:
-#   - GROMACS 2024+ (gmx in PATH, built with CUDA)
-#   - Input PDB at /opt/Thesis-insilico/data/prepared/<gene>.clean.pdb
+#   - GROMACS 2024+ (gmx in PATH; CUDA build optional — see MD_DEVICE below)
+#   - Input PDB at <repo>/data/prepared/<gene>.clean.pdb
 #   - The mdp/ files in this directory
 #
 # Bound mode notes:
@@ -20,6 +20,13 @@
 #   (2.25 Å from a single SG for monodentate, or at the bidentate apex
 #   for two SGs) and adding distance restraints to maintain the geometry.
 #   This tests pose stability, not absolute binding energetics.
+#
+# Device selection:
+#   MD_DEVICE=auto (default) — use the GPU if `nvidia-smi -L` lists one,
+#   otherwise fall back to CPU-only offload. Override with MD_DEVICE=gpu
+#   or MD_DEVICE=cpu to force a path (e.g. on a laptop with an NVIDIA GPU
+#   you don't want mdrun to touch, or to force GPU and fail loudly if one
+#   isn't actually available).
 
 set -euo pipefail
 
@@ -79,20 +86,48 @@ if [[ "$PDBFIXER_GENES" == *" $GENE "* ]]; then
   PDB_IN="$RUN_DIR/${GENE}.pdbfixer.pdb"
 fi
 
-# Speed: use all CPU threads, offload non-bonded to GPU.
+# Speed: use all CPU threads, offload non-bonded (+ PME, on GPU) work.
 # NT is overridable so a second, smaller job can share the box with a
 # larger already-running one without fully oversubscribing the CPU.
 NT="${NT:-$(nproc)}"
-# No "-update gpu": OPC water uses a virtual site (massless MW), and
-# GROMACS's GPU update explicitly doesn't support virtual sites at all
-# ("Virtual sites are not supported") — this applies to every dynamical
-# step (NVT/NPT/production), not just EM, so update stays on CPU throughout.
-GPU_FLAGS="-nb gpu -pme gpu -bonded cpu"
-COMMON_RUN="-v -nt $NT $GPU_FLAGS"
-# EM uses a non-dynamical integrator (steep/cg) — GROMACS rejects GPU PME
-# for that (on top of the update restriction above), so EM can only
-# offload nonbonded to the GPU.
-EM_RUN="-v -nt $NT -nb gpu -bonded cpu"
+
+MD_DEVICE="${MD_DEVICE:-auto}"
+case "$MD_DEVICE" in
+  auto)
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
+      USE_GPU=1
+    else
+      USE_GPU=0
+    fi
+    ;;
+  gpu) USE_GPU=1 ;;
+  cpu) USE_GPU=0 ;;
+  *)
+    echo "ERROR: MD_DEVICE must be auto, gpu, or cpu (got: $MD_DEVICE)"
+    exit 1
+    ;;
+esac
+
+if [ "$USE_GPU" = "1" ]; then
+  echo "[md] device: GPU (nb+pme offloaded, bonded on CPU)" | tee -a "$LOG"
+  # No "-update gpu": OPC water uses a virtual site (massless MW), and
+  # GROMACS's GPU update explicitly doesn't support virtual sites at all
+  # ("Virtual sites are not supported") — this applies to every dynamical
+  # step (NVT/NPT/production), not just EM, so update stays on CPU throughout.
+  GPU_FLAGS="-nb gpu -pme gpu -bonded cpu"
+  COMMON_RUN="-v -nt $NT $GPU_FLAGS"
+  # EM uses a non-dynamical integrator (steep/cg) — GROMACS rejects GPU PME
+  # for that (on top of the update restriction above), so EM can only
+  # offload nonbonded to the GPU.
+  EM_RUN="-v -nt $NT -nb gpu -bonded cpu"
+else
+  echo "[md] device: CPU-only (no nvidia GPU detected / MD_DEVICE=cpu)" | tee -a "$LOG"
+  # CPU-only: no GPU flags at all. GROMACS's Verlet scheme (the only
+  # scheme it supports since 2020) runs the full nonbonded+PME+bonded
+  # stack on CPU threads fine — just slower than GPU offload.
+  COMMON_RUN="-v -nt $NT"
+  EM_RUN="-v -nt $NT"
+fi
 
 # ── 1. Topology generation ──
 # AMBER ff19SB protein + OPC water (ff19SB's authors recommend OPC/OPC3,

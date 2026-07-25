@@ -185,8 +185,9 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--gene", required=True)
     p.add_argument("--mode", default="apo", choices=["apo", "bound"])
+    repo_root = Path(__file__).resolve().parents[2]
     p.add_argument("--md-root", type=Path,
-                   default=Path("/opt/Thesis-insilico/results/md"))
+                   default=repo_root / "results" / "md")
     args = p.parse_args()
     run_dir = args.md_root / f"{args.gene}_{args.mode}"
     return analyse(args.gene, args.mode, run_dir)

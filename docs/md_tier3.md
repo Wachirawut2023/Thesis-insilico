@@ -130,7 +130,30 @@ In `docs/chapter_in_silico.md`:
 
 ## Cost & runtime
 
-Two provisioning paths supported:
+**Local (your own computer, CPU-only)** — no cloud provisioning, $0 cost.
+Most of Tier 3's wall time is the production `mdrun` step, and GROMACS's
+CPU-only path (Verlet scheme, thread-MPI) runs the exact same protocol as
+the GPU paths below — just slower. Reasonable if you don't mind the
+simulations running for days instead of hours, or you're only running a
+handful of genes rather than the full top-8 panel.
+
+```bash
+conda activate arsenic-m6a
+conda install -c conda-forge -c bioconda "gromacs=2024" pdbfixer
+bash scripts/md/run_all.sh          # or run_md.sh for a single gene/mode
+```
+
+`run_md.sh` auto-detects the absence of an NVIDIA GPU (`MD_DEVICE=auto`,
+the default) and drops the `-nb gpu -pme gpu` offload flags, running
+everything on CPU threads instead (`-nt $(nproc)` by default; override
+with `NT=<n>`). Force a path explicitly with `MD_DEVICE=cpu` or
+`MD_DEVICE=gpu` if you have an NVIDIA GPU locally and want to use it (or
+confirm it's actually being picked up). No infra runbook needed — this
+runs directly against your local `data/prepared/` and writes to
+`results/md/` like any other pipeline stage.
+
+Three cloud provisioning paths are also supported, if you'd rather trade
+money for wall time:
 
 **GCP `g2-standard-8` with NVIDIA L4** (recommended — same project as
 static pipeline):
