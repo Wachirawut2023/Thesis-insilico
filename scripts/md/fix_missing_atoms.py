@@ -38,7 +38,7 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        from openmm.app import PDBFile
+        from openmm.app import Modeller, PDBFile
         from pdbfixer import PDBFixer
     except ImportError:
         print(
@@ -50,6 +50,29 @@ def main() -> int:
 
     fixer = PDBFixer(filename=args.in_pdb)
     fixer.removeHeterogens(keepWater=False)
+
+    # Belt-and-suspenders: removeHeterogens() has been observed to still
+    # leave a stray cofactor residue behind (FTO's Fe2+ ion, residue name
+    # FE2) that gmx pdb2gmx then rejects outright with "Residue 'FE2' not
+    # found in residue topology database" / "chain does not appear to
+    # contain a recognized chain molecule". Explicitly strip anything left
+    # over that isn't a standard amino acid the target force field knows,
+    # regardless of what removeHeterogens' own heterogen list caught.
+    standard_residues = {
+        "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
+        "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+        "HIP", "HID", "HIE", "HSD", "HSE", "HSP", "CYX", "CYM", "ASH", "GLH", "LYN",
+    }
+    stray = [r for r in fixer.topology.residues() if r.name not in standard_residues]
+    if stray:
+        print(
+            f"[fix_missing_atoms] stripping {len(stray)} residual non-standard "
+            f"residue(s) removeHeterogens missed: {sorted({r.name for r in stray})}"
+        )
+        modeller = Modeller(fixer.topology, fixer.positions)
+        modeller.delete(stray)
+        fixer.topology, fixer.positions = modeller.topology, modeller.positions
+
     fixer.findMissingResidues()
     # Only repair atoms within residues already present in the structure;
     # do not model in missing loops/termini as new residues.
