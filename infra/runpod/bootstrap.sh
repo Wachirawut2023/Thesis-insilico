@@ -17,10 +17,18 @@ if [ ! -d /opt/miniforge ]; then
 fi
 source /opt/miniforge/etc/profile.d/conda.sh
 
-# MD environment
+# MD environment. IMPORTANT: conda-forge's *plain* "nompi" gromacs build
+# offloads to GPU via OpenCL, and GROMACS' OpenCL backend does not support
+# Volta/Turing/Ampere-or-newer NVIDIA GPUs for compute -- gmx enumerates the
+# card, reports it "incompatible", and silently drops to CPU-only with no
+# error. Pin the real CUDA-enabled build (build string "nompi_cuda*")
+# explicitly, since the solver won't prefer it on its own.
+CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
+export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
+GMX_SPEC="gromacs=2024.5=nompi_cuda*"
 if ! conda env list | grep -q '^md'; then
   mamba create -n md -c conda-forge -y \
-    gromacs=2024 \
+    "$GMX_SPEC" \
     python=3.11 \
     mdanalysis \
     freesasa \
@@ -33,6 +41,11 @@ if ! conda env list | grep -q '^md'; then
     pyyaml
 fi
 conda activate md
+gmx --version 2>&1 | grep -qi "GPU support:.*CUDA" || {
+  echo "ERROR: gromacs env is not CUDA-enabled (spec was $GMX_SPEC)."
+  echo "Check https://anaconda.org/conda-forge/gromacs/files for the current nompi_cuda* build and bump GMX_SPEC."
+  exit 1
+}
 
 # Repo
 if [ ! -d /opt/Thesis-insilico ]; then

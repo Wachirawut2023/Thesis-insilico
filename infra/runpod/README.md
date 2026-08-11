@@ -52,15 +52,18 @@ bash /tmp/miniforge.sh -b -p /opt/miniforge
 source /opt/miniforge/etc/profile.d/conda.sh
 
 # 3. Create the MD environment (GROMACS with GPU, MDAnalysis, freesasa).
-# Note: conda-forge's GROMACS build offloads to GPU via OpenCL (not CUDA).
-# If `gmx --version | grep GPU` shows the backend but mdrun still errors
-# with "no GPU is detected", the OpenCL ICD isn't registered for the
-# driver -- check /etc/OpenCL/vendors/ for an .icd file naming
-# libnvidia-opencl.so; RunPod's stock images normally have this already,
-# but if not, `find / -name libnvidia-opencl.so*` and write its path into
-# /etc/OpenCL/vendors/nvidia.icd.
+# IMPORTANT: conda-forge's *plain* "nompi" gromacs build offloads to GPU
+# via OpenCL, and GROMACS' OpenCL backend does not support Volta/Turing/
+# Ampere-or-newer NVIDIA GPUs (the RTX 4090 included) for compute -- gmx
+# enumerates the card, reports it "incompatible", and silently drops to
+# CPU-only with no error at all. conda-forge also ships a real
+# CUDA-enabled build (build string "nompi_cuda*"); pin it explicitly, since
+# the solver won't prefer it on its own.
+CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
+export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
+GMX_SPEC="gromacs=2024.5=nompi_cuda*"
 mamba create -n md -c conda-forge -y \
-    gromacs=2024 \
+    "$GMX_SPEC" \
     python=3.11 \
     mdanalysis \
     freesasa \
@@ -74,13 +77,19 @@ mamba create -n md -c conda-forge -y \
     pyyaml
 conda activate md
 
-# Verify GROMACS sees the GPU
+# Verify GROMACS actually got the CUDA build -- fail here rather than
+# discover 24-30 GPU-hours later that it ran CPU-only the whole time.
 gmx --version | grep -i gpu
+gmx --version 2>&1 | grep -qi "GPU support:.*CUDA" || {
+  echo "ERROR: not a CUDA build (spec was $GMX_SPEC)."
+  echo "Check https://anaconda.org/conda-forge/gromacs/files for the current nompi_cuda* build and bump GMX_SPEC."
+  exit 1
+}
 nvidia-smi
 ```
 
-`gmx --version` should print `GPU support: enabled` and `CUDA driver: …`.
-`nvidia-smi` should show your RTX 4090.
+`gmx --version` should print `GPU support: CUDA`. `nvidia-smi` should show
+your RTX 4090.
 
 ## 5. Pull repo + prepared structures
 

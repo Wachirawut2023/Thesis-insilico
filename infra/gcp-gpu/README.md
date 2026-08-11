@@ -202,9 +202,15 @@ and budget matters more than convenience, **RunPod is ~$10 cheaper**.
   fails, run `sudo /opt/deeplearning/install-driver.sh` manually and
   retry.
 - **GROMACS slow / GPU idle**: `nvidia-smi -l 5` shows utilisation. If
-  it's below 30%, GROMACS may be falling back to CPU. Check
-  `gmx --version` shows `GPU support: enabled`; if not, mamba rebuild
-  the env explicitly with `cudatoolkit`.
+  it's below 30%, GROMACS is running CPU-only. Check `gmx --version` shows
+  `GPU support: CUDA` (not `OpenCL` — conda-forge's plain `gromacs` build
+  offloads via OpenCL, which doesn't support Volta/Turing/Ampere-or-newer
+  NVIDIA GPUs for compute and silently falls back). Fix: recreate the `md`
+  env pinning the CUDA build explicitly,
+  `mamba create -n md -c conda-forge -y "gromacs=2024.5=nompi_cuda*" ...`
+  (see `cloud-init.yaml` step 4 for the full command) — a bare
+  `cudatoolkit` dependency isn't enough, the build string itself must be
+  pinned.
 - **Out of memory on RBM15B**: 977 aa protein in a solvated box can
   need >32 GB. Either skip RBM15B from the panel or upgrade to
   `g2-standard-12` ($0.94/hr).
