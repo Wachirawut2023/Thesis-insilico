@@ -1,0 +1,157 @@
+name: Tier 1-2 static screen
+
+# Runs the CPU-only static pipeline (stages 00-08: fetch, prep, Cys landscape,
+# pocket detection, non-covalent + covalent docking, ranking, viz) on
+# GitHub-hosted runners and commits results/ back to the triggering branch.
+#
+# Why this exists: stages 03-06 checkpoint per-gene in
+# results/.checkpoints/*.done (see Makefile / scripts/_common.py). Because
+# results/*.tsv, REPORT.md, figures/*.png and .checkpoints/ are all tracked
+# in git (see .gitignore), each run resumes exactly where the last one left
+# off -- already-completed genes are skipped. A single GitHub-hosted job is
+# hard-capped at 6h, so the full ~25-target panel may need several manual
+# dispatches of this workflow before every checkpoint is complete (watch the
+# "Checkpoint progress" table in the job summary).
+#
+# Recommended first run: target_set=smoke (3 genes: METTL3, ALKBH5, YTHDF2)
+# to validate the whole toolchain quickly, before committing to target_set=all.
+#
+# data/pdb, data/af, data/prepared are intentionally NOT committed (they're
+# heavy + regenerable, see .gitignore) -- they're kept warm across runs via
+# actions/cache instead, keyed on data/targets.tsv.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_set:
+        description: "Which targets to run"
+        type: choice
+        options:
+          - smoke
+          - all
+        default: smoke
+      run_viz:
+        description: "Also run stage 8 (PyMOL renders of top 5 hits)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tier1-2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache raw + prepared structures
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/pdb
+            data/af
+            data/prepared
+          key: structures-${{ hashFiles('data/targets.tsv') }}
+          restore-keys: |
+            structures-
+
+      - name: Set up conda env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          python-version: "3.11"
+          activate-environment: arsenic-m6a
+          environment-file: env/environment.yml
+          use-mamba: true
+
+      - name: Ligand
+        run: make ligand
+
+      - name: Smoke run (fetch -> rank, 3 genes)
+        if: inputs.target_set == 'smoke'
+        timeout-minutes: 60
+        run: make smoke
+
+      - name: Fetch structures
+        if: inputs.target_set == 'all'
+        timeout-minutes: 30
+        run: make fetch
+
+      - name: Verify METTL3 Cys numbering (stage 0)
+        if: inputs.target_set == 'all'
+        timeout-minutes: 10
+        run: make verify
+
+      - name: Prepare receptors
+        if: inputs.target_set == 'all'
+        timeout-minutes: 30
+        run: make prep
+
+      - name: Cys landscape
+        if: inputs.target_set == 'all'
+        timeout-minutes: 20
+        run: make cys
+
+      - name: Pocket detection
+        if: inputs.target_set == 'all'
+        timeout-minutes: 40
+        run: make pockets
+
+      - name: Non-covalent docking (Vina)
+        if: inputs.target_set == 'all'
+        timeout-minutes: 150
+        run: timeout 148m make dock-nc || echo "::warning::dock-nc hit its time budget; re-dispatch this workflow to resume (checkpointed per box)"
+
+      - name: Covalent docking (geometric)
+        if: inputs.target_set == 'all'
+        timeout-minutes: 40
+        run: timeout 38m make dock-cov || echo "::warning::dock-cov hit its time budget; re-dispatch this workflow to resume (checkpointed per gene)"
+
+      - name: Composite ranking
+        if: inputs.target_set == 'all'
+        timeout-minutes: 10
+        run: make rank
+
+      - name: Visualize top hits
+        if: inputs.run_viz
+        timeout-minutes: 20
+        run: make viz
+
+      - name: Checkpoint progress summary
+        if: always()
+        run: |
+          {
+            echo "## Checkpoint progress ($(date -u +%FT%TZ))"
+            echo ""
+            echo "| stage | genes/boxes done |"
+            echo "|---|---|"
+            total=$(tail -n +2 data/targets.tsv | wc -l)
+            for f in results/.checkpoints/*.done; do
+              [ -e "$f" ] || continue
+              stage=$(basename "$f" .done)
+              n=$(wc -l < "$f")
+              echo "| $stage | $n (of $total total targets) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit + push results
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/
+          if git diff --cached --quiet; then
+            echo "No result changes to commit."
+          else
+            git commit -m "ci: tier 1-2 pipeline run (${{ inputs.target_set }}) [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
