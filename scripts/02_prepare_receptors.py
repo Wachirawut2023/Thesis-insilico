@@ -17,6 +17,16 @@ from _common import AF_DIR, PDB_DIR, PREP_DIR, get_logger, load_targets
 
 LOG = get_logger("prepare")
 KEEP_HETATMS = {"SAM", "SAH", "FE", "FE2", "AKG", "2OG", "M6A", "6MA", "MG", "ZN"}
+# Every monatomic-ion .rtp entry in AMBER force fields (checked amber19sb's
+# ions.rtp directly: CA/CL/K/MG/MN/NA/ZN/FE/FE2) names its single atom
+# identically to the residue. Raw PDB depositions instead name the atom
+# after its plain element ("FE"), which only actually diverges from the
+# residue name for FE2 (Fe2+ — an AMBER oxidation-state label, not a PDB
+# element symbol) — e.g. FTO's Fe(II) cofactor is `HETATM ... FE   FE2`.
+# Left uncorrected, pdb2gmx fatal-errors ("atom FE ... not found in rtp
+# entry FE2") since it looks up expected atoms by matching the residue's
+# rtp block, not the element.
+MONATOMIC_IONS = {"FE", "FE2", "MG", "ZN"}
 
 
 def _strip_pdb(src: Path, dst: Path) -> None:
@@ -43,6 +53,10 @@ def _strip_pdb(src: Path, dst: Path) -> None:
             atom = line[12:16].strip()
             if tag == "HETATM" and resn not in KEEP_HETATMS and resn != "MSE":
                 continue
+            if tag == "HETATM" and resn in MONATOMIC_IONS and atom != resn:
+                LOG.info("renaming HETATM atom %r -> %r (resn %s, resi %d) to match AMBER rtp", atom, resn, resn, resi)
+                atom = resn
+                line = line[:12] + f"{atom:<4s}" + line[16:]
             key = (chain, resn, resi, atom)
             if key in seen_atoms:
                 continue

@@ -15,6 +15,11 @@ results/figures/*.pse
 results/docking_poses/
 results/tmp/
 
+# Tier-3 MD outputs — multi-hundred-MB to multi-GB trajectories per run,
+# regenerable via scripts/md/run_md.sh. Only summary stats/plots derived
+# from these belong in results/ for the thesis chapter.
+results/md/
+
 # Pipeline outputs that ARE tracked in git (figures + tables for thesis):
 #   results/*.tsv                — already not ignored
 #   results/REPORT.md            — already not ignored

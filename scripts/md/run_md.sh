@@ -10,12 +10,15 @@
 #   bash run_md.sh TXN1 bound A 32 35       # bidentate with partner
 #
 # Requires:
-#   - GROMACS 2024+ (gmx in PATH). GPU offload is used by default (via
-#     whichever backend your GROMACS build supports — CUDA or OpenCL); set
-#     MD_GPU=0 to force CPU-only if the GPU backend can't see a device in
-#     your environment (much slower — a last resort, e.g.:
-#     MD_GPU=0 bash run_md.sh TXN1 apo).
-#   - Input PDB at /opt/Thesis-insilico/data/prepared/<gene>.clean.pdb
+#   - GROMACS >= 2026.3 (gmx in PATH), built with GPU offload support —
+#     either a CUDA build (NVIDIA: conda-forge's `nompi_cuda*` build string,
+#     see infra/gcp-gpu/ and infra/runpod/) or a HIP build (AMD: built from
+#     source against ROCm, see infra/amd-gpu/). GROMACS's `-nb gpu -pme gpu`
+#     offload is backend-agnostic, so this script runs unchanged on either.
+#     2026.3+ specifically because that's the release that added a native
+#     port of AMBER's ff19SB (this pipeline's protein force field) — earlier
+#     releases fail pdb2gmx with "force field 'amber19sb' not found".
+#   - Input PDB at <repo>/data/prepared/<gene>.clean.pdb
 #   - The mdp/ files in this directory
 #
 # Bound mode notes:
@@ -25,15 +28,21 @@
 #   for two SGs) and adding distance restraints to maintain the geometry.
 #   This tests pose stability, not absolute binding energetics.
 #
-# Resumability (important on Colab, where sessions crash/disconnect):
-#   Every step is skipped if its output already exists, and the production
-#   step (the multi-hour one) resumes from its last GROMACS checkpoint via
-#   `gmx mdrun -cpi md.cpt -append` instead of restarting the 50 ns run from
-#   t=0. Just re-run this script (or run_all.sh) after a crash — it picks up
-#   wherever it left off. Set MD_MAXH to make production stop cleanly (and
-#   write a clean checkpoint) before a Colab time limit hits, e.g.:
-#     MD_MAXH=5 bash run_md.sh METTL3 apo
-#   then re-run the same command to continue; repeat until "DONE" is logged.
+# Resumability (important on Colab, where sessions crash/disconnect, and on
+# any long unattended cloud run in general):
+#   Every step is skipped if its output already exists, and production (the
+#   multi-hour step) is segmented into MD_PROD_MAXH_HOURS-long `gmx mdrun`
+#   processes that resume from the last checkpoint via `-cpi md.cpt -append`
+#   instead of restarting the 50 ns run from t=0. Just re-run this script
+#   (or run_all.sh) after a crash — it picks up wherever it left off.
+#
+# Device selection:
+#   MD_DEVICE=auto (default) — use the GPU if one is visible via
+#   `nvidia-smi -L` (NVIDIA) or `rocminfo` (AMD), otherwise fall back to
+#   CPU-only offload. Override with MD_DEVICE=gpu or MD_DEVICE=cpu to force
+#   a path (e.g. to force GPU and fail loudly if one isn't actually
+#   available, or to force CPU-only as a last resort if the GPU backend
+#   can't see a device in your environment, e.g. MD_DEVICE=cpu bash run_md.sh TXN1 apo).
 
 set -euo pipefail
 
@@ -43,17 +52,9 @@ CHAIN="${3:-A}"
 ANCHOR_RESI="${4:-}"
 PARTNER_RESI="${5:-}"
 
-# Max wall-clock hours for the production mdrun before it stops cleanly and
-# writes a checkpoint (gmx -maxh). Unset/0 = run until GROMACS finishes or
-# the process is killed. On Colab, set this comfortably below your expected
-# session length so you always get a clean, resumable checkpoint.
-MD_MAXH="${MD_MAXH:-0}"
 # Checkpoint-write interval in minutes (gmx mdrun -cpt). Shorter = less lost
 # work on an abrupt kill, at the cost of a bit more I/O.
 MD_CPT_MIN="${MD_CPT_MIN:-5}"
-# Set to 0 to force CPU-only mdrun (e.g. if GROMACS' OpenCL GPU backend
-# can't see the GPU in this container — very slow, last resort).
-MD_GPU="${MD_GPU:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MDP_DIR="$SCRIPT_DIR/mdp"
@@ -87,52 +88,104 @@ fi
 LOG="$RUN_DIR/run.log"
 echo "[md] $(date -Is)  gene=$GENE  mode=$MODE  chain=$CHAIN  anchor=$ANCHOR_RESI partner=$PARTNER_RESI" | tee -a "$LOG"
 
-# Speed: use all CPU threads, offload non-bonded to GPU.
-NT=$(nproc)
-if [ "$MD_GPU" = "1" ]; then
-  GPU_FLAGS="-nb gpu -pme gpu -bonded cpu -update gpu"
-  # Energy minimization (em.mdp, integrator=steep) cannot use GPU PME/update —
-  # GROMACS requires a dynamical integrator (md/sd/bd) for those; steepest
-  # descent fails with "PME GPU does not support: Non-dynamical integrator".
-  EM_FLAGS="-nb gpu -bonded cpu"
-else
-  GPU_FLAGS="-nb cpu -pme cpu -bonded cpu"
-  EM_FLAGS="$GPU_FLAGS"
-fi
-COMMON_RUN="-v -nt $NT $GPU_FLAGS -cpt $MD_CPT_MIN"
-COMMON_RUN_EM="-v -nt $NT $EM_FLAGS -cpt $MD_CPT_MIN"
-
-# ── 0. Repair missing heavy atoms ──
+# ── 0. Repair missing heavy atoms + strip cofactor HETATMs ──
 # Crystal structures (e.g. METTL3/METTL14, FTO, ALKBH5) commonly have
-# unresolved side-chain density beyond Cβ for surface residues. gmx pdb2gmx
-# can only add missing *hydrogens* (-ignh) — a missing heavy atom (e.g.
-# Gln's CG) makes it fail outright with "atom CG ... not found". Run every
-# receptor through PDBFixer first so this doesn't silently vary by protein.
+# unresolved side-chain density beyond Cβ for surface residues, and
+# 02_prepare_receptors.py deliberately keeps catalytic cofactor HETATMs
+# (SAM, Fe, 2OG, Zn, Mg, m6A...) for Tier 1-2's docking analysis that gmx
+# pdb2gmx has no template for. Run every receptor through PDBFixer first
+# (scripts/md/fix_missing_atoms.py) so neither of those varies by protein —
+# see that script's docstring for the full rationale.
 FIXED_PDB="protein_fixed.pdb"
 if [ -f "$FIXED_PDB" ]; then
   echo "[md] step 0: repair missing heavy atoms — already done, skipping" | tee -a "$LOG"
 else
-  echo "[md] step 0: repair missing heavy atoms (PDBFixer)" | tee -a "$LOG"
+  echo "[md] step 0: repair missing heavy atoms + strip cofactors (PDBFixer)" | tee -a "$LOG"
   python3 "$SCRIPT_DIR/fix_missing_atoms.py" --in-pdb "$PDB_IN" --out-pdb "$FIXED_PDB" \
     >> "$LOG" 2>&1
 fi
 PDB_FOR_GMX="$RUN_DIR/$FIXED_PDB"
 
+# Speed: use all CPU threads, offload non-bonded (+ PME, on GPU) work. NT is
+# overridable so a second, smaller job can share the box with a larger
+# already-running one without fully oversubscribing the CPU.
+NT="${NT:-$(nproc)}"
+
+MD_DEVICE="${MD_DEVICE:-auto}"
+case "$MD_DEVICE" in
+  auto)
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
+      USE_GPU=1
+    elif command -v rocminfo >/dev/null 2>&1 && rocminfo 2>/dev/null | grep -qE 'gfx[0-9]{2,4}[a-z]?'; then
+      USE_GPU=1
+    else
+      USE_GPU=0
+    fi
+    ;;
+  gpu) USE_GPU=1 ;;
+  cpu) USE_GPU=0 ;;
+  *)
+    echo "ERROR: MD_DEVICE must be auto, gpu, or cpu (got: $MD_DEVICE)"
+    exit 1
+    ;;
+esac
+
+if [ "$USE_GPU" = "1" ]; then
+  echo "[md] device: GPU (nb+pme offloaded, bonded on CPU)" | tee -a "$LOG"
+  # No "-update gpu": OPC water uses a virtual site (massless MW), and
+  # GROMACS's GPU update explicitly doesn't support virtual sites at all
+  # ("Virtual sites are not supported") — this applies to every dynamical
+  # step (NVT/NPT/production), not just EM, so update stays on CPU throughout.
+  GPU_FLAGS="-nb gpu -pme gpu -bonded cpu"
+  COMMON_RUN="-v -nt $NT $GPU_FLAGS -cpt $MD_CPT_MIN"
+  # EM uses a non-dynamical integrator (steep/cg) — GROMACS rejects GPU PME
+  # for that (on top of the update restriction above), so EM can only
+  # offload nonbonded to the GPU.
+  EM_RUN="-v -nt $NT -nb gpu -bonded cpu -cpt $MD_CPT_MIN"
+else
+  echo "[md] device: CPU-only (no GPU detected / MD_DEVICE=cpu)" | tee -a "$LOG"
+  # CPU-only: no GPU flags at all. GROMACS's Verlet scheme (the only
+  # scheme it supports since 2020) runs the full nonbonded+PME+bonded
+  # stack on CPU threads fine — just slower than GPU offload.
+  COMMON_RUN="-v -nt $NT -cpt $MD_CPT_MIN"
+  EM_RUN="-v -nt $NT -cpt $MD_CPT_MIN"
+fi
+
 # ── 1. Topology generation ──
-# AMBER ff99SB-ILDN protein + TIP3P water. (Originally targeted ff19SB, but
-# that force field was never ported into GROMACS' native .ff directory
-# format and isn't bundled by any stock GROMACS build, including
-# conda-forge's — pdb2gmx fails with "Could not find force field 'amber19sb'"
-# on every install. ff99SB-ILDN ships built into GROMACS itself, needs no
-# extra setup, and is one of the most validated general protein force
-# fields — a solid choice for a pose-stability screen like this one.)
-# -ignh strips existing hydrogens; pdb2gmx rebuilds them per the force field.
+# AMBER ff19SB protein + OPC water (ff19SB's authors recommend OPC/OPC3,
+# not TIP3P — GROMACS's own force-field docs say the same; ff19SB's CMAP
+# backbone corrections weren't validated against TIP3P). Needs GROMACS
+# >= 2026.3 (see header) — earlier releases don't ship ff19SB at all.
+# -ignh strips existing hydrogens; pdb2gmx rebuilds them per the force
+# field. Missing heavy atoms and cofactors are already handled by step 0's
+# PDBFixer pre-pass, so no -missing flag is needed here.
+#
+# Genes needing an explicit histidine protonation state: pdb2gmx's
+# automatic detector (hizzie) infers HID/HIE/HIP from each histidine's
+# local H-bonding, but needs the ring atoms present to do it. A histidine
+# with the whole ring unresolved in the crystal structure fails "Incomplete
+# ring" even after step 0's heavy-atom repair. -his forces interactive
+# selection for *every* histidine in the structure (pdb2gmx has no
+# per-residue override), so only opt genes into this when they actually hit
+# that error — for everything else, automatic per-residue detection is the
+# better default. User-approved default for the current case
+# (METTL3/HIS116, ring fully absent, not obviously catalytic): HIE for all
+# of METTL3's histidines.
+FORCE_HIE_GENES=" METTL3 "
+PDB2GMX_STDIN="1"
+if [[ "$FORCE_HIE_GENES" == *" $GENE "* ]]; then
+  N_HIS=$(awk '$1=="ATOM" && $4=="HIS" {print substr($0,22,1) substr($0,23,4)}' "$PDB_FOR_GMX" | sort -u | wc -l)
+  PDB2GMX_HIS_FLAG="-his"
+  PDB2GMX_STDIN="$(printf '1\n%.0s' $(seq 1 $((N_HIS + 1))))"
+else
+  PDB2GMX_HIS_FLAG=""
+fi
 if [ -f protein.gro ]; then
   echo "[md] step 1: pdb2gmx — already done, skipping" | tee -a "$LOG"
 else
   echo "[md] step 1: pdb2gmx" | tee -a "$LOG"
-  echo "1" | gmx pdb2gmx -f "$PDB_FOR_GMX" -o protein.gro -p topol.top \
-    -i posre.itp -ff amber99sb-ildn -water tip3p -ignh \
+  echo "$PDB2GMX_STDIN" | gmx pdb2gmx -f "$PDB_FOR_GMX" -o protein.gro -p topol.top \
+    -i posre.itp -ff amber19sb -water opc -ignh $PDB2GMX_HIS_FLAG \
     >> "$LOG" 2>&1
 fi
 
@@ -146,11 +199,14 @@ else
 fi
 
 # ── 3. Solvate ──
+# OPC is a 4-point model (OW/HW1/HW2/MW) like TIP4P, not 3-point like SPC —
+# the solvent box coordinate file's per-molecule atom count has to match,
+# so this must be tip4p.gro, not the default spc216.gro (3-point).
 if [ -f protein_solv.gro ]; then
   echo "[md] step 3: solvate — already done, skipping" | tee -a "$LOG"
 else
   echo "[md] step 3: solvate" | tee -a "$LOG"
-  gmx solvate -cp protein_box.gro -cs spc216.gro -o protein_solv.gro -p topol.top \
+  gmx solvate -cp protein_box.gro -cs tip4p.gro -o protein_solv.gro -p topol.top \
     >> "$LOG" 2>&1
 fi
 
@@ -193,7 +249,7 @@ else
   echo "[md] step 5: energy minimization" | tee -a "$LOG"
   gmx grompp -f "$MDP_DIR/em.mdp" -c "$START_GRO" -p topol.top -o em.tpr -maxwarn 2 \
     >> "$LOG" 2>&1
-  gmx mdrun -deffnm em $COMMON_RUN_EM \
+  gmx mdrun -deffnm em $EM_RUN \
     >> "$LOG" 2>&1
 fi
 
@@ -232,21 +288,47 @@ else
 fi
 
 # ── 8. Production ──
-echo "[md] step 8: production 50 ns (this is the long step, ~3-4 hr on RTX 4090; much longer on a Colab GPU)" | tee -a "$LOG"
-MAXH_FLAG=""
-if [ "$MD_MAXH" != "0" ]; then
-  MAXH_FLAG="-maxh $MD_MAXH"
-fi
+# Segmented via periodic -maxh restarts + checkpoint resume, for two
+# independent reasons: it's what makes a Colab-session crash (or any other
+# unattended-cloud interruption) resumable instead of restarting the 50 ns
+# run from t=0, and it works around an in-process memory leak observed in
+# the GROMACS 2026.3 build that scales with simulation progress — three
+# independent OOM kills on a 235GB-RAM droplet (PIN1_bound, GAPDH/apo,
+# CBLL1/apo) all died late in their respective runs (83-91% of steps)
+# regardless of system size (27k-609k atoms), consistent with a leak rather
+# than genuinely needing that much memory. A fresh mdrun process starts
+# with a clean heap, so capping each process to MD_PROD_MAXH_HOURS and
+# resuming from checkpoint avoids both problems without changing the
+# resulting trajectory at all.
+MD_PROD_MAXH_HOURS="${MD_PROD_MAXH_HOURS:-2}"
+echo "[md] step 8: production 50 ns (segmented, ${MD_PROD_MAXH_HOURS}h per mdrun process)" | tee -a "$LOG"
 if [ ! -f md.tpr ]; then
   gmx grompp -f "$MDP_DIR/md.mdp" -c npt.gro -t npt.cpt -p topol.top -o md.tpr -maxwarn 2 \
     >> "$LOG" 2>&1
 fi
-if [ -f md.cpt ]; then
-  echo "[md] resuming production from checkpoint (md.cpt)" | tee -a "$LOG"
-  gmx mdrun -deffnm md -cpi md.cpt -append $COMMON_RUN $MAXH_FLAG >> "$LOG" 2>&1
-else
-  gmx mdrun -deffnm md $COMMON_RUN $MAXH_FLAG >> "$LOG" 2>&1
-fi
+
+PROD_MAX_SEGMENTS=50
+seg=0
+while [ ! -f md.gro ]; do
+  seg=$((seg + 1))
+  if [ "$seg" -gt "$PROD_MAX_SEGMENTS" ]; then
+    echo "[md] production aborted: exceeded $PROD_MAX_SEGMENTS restart segments without reaching md.gro" | tee -a "$LOG"
+    exit 1
+  fi
+  if [ -f md.cpt ]; then
+    echo "[md] production segment $seg (resuming from checkpoint)" | tee -a "$LOG"
+    gmx mdrun -deffnm md -cpi md.cpt -append -maxh "$MD_PROD_MAXH_HOURS" $COMMON_RUN \
+      >> "$LOG" 2>&1 || true
+  else
+    echo "[md] production segment $seg (fresh start)" | tee -a "$LOG"
+    gmx mdrun -deffnm md -maxh "$MD_PROD_MAXH_HOURS" $COMMON_RUN \
+      >> "$LOG" 2>&1 || true
+  fi
+  if [ ! -f md.gro ] && [ ! -f md.cpt ]; then
+    echo "[md] production segment $seg failed before writing any checkpoint — aborting" | tee -a "$LOG"
+    exit 1
+  fi
+done
 
 if [ -f md.gro ]; then
   echo "[md] DONE $(date -Is)  $GENE/$MODE" | tee -a "$LOG"

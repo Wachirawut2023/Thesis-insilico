@@ -49,7 +49,7 @@ write_files:
       fi
       cd Thesis-insilico
       git fetch origin
-      git checkout "${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+      git checkout "${BRANCH:-main}"
       git pull --ff-only
 
       # 3. Conda env

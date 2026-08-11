@@ -32,7 +32,7 @@ IMAGE_PROJECT="${IMAGE_PROJECT:-ubuntu-os-cloud}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-50}"
 DISK_TYPE="${DISK_TYPE:-pd-balanced}"            # cheaper than pd-ssd; faster than pd-standard
 REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
-BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+BRANCH="${BRANCH:-main}"
 
 cd "$(dirname "$0")"
 
@@ -61,7 +61,7 @@ fi
 tmp_user_data="$(mktemp)"
 trap 'rm -f "$tmp_user_data"' EXIT
 sed -e "s|\${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}|$REPO_URL|g" \
-    -e "s|\${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}|$BRANCH|g" \
+    -e "s|\${BRANCH:-main}|$BRANCH|g" \
     cloud-init.yaml > "$tmp_user_data"
 
 # 3. Create or reuse the instance

@@ -56,7 +56,7 @@ A free Linux terminal inside the browser, with `gcloud` pre-installed and a
    gcloud config set project YOUR_PROJECT_ID
    gcloud services enable compute.googleapis.com
    git clone https://github.com/Wachirawut2023/Thesis-insilico.git
-   cd Thesis-insilico && git checkout claude/arsenic-m6a-inhibition-model-6pwWS
+   cd Thesis-insilico && git checkout main
    cd infra/gcp
    ```
 

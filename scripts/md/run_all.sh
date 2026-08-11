@@ -4,17 +4,18 @@
 # Reads scripts/md/data/md_targets.tsv and runs run_md.sh + analyze.py per row.
 # Logs per-protein wall time; resumable at two levels:
 #   - whole gene/mode runs are skipped once md.gro exists
-#   - a gene/mode run interrupted mid-production (crash, disconnect, or an
-#     MD_MAXH time limit inside run_md.sh) resumes from its GROMACS
-#     checkpoint (md.cpt) instead of restarting the 50 ns trajectory
+#   - a gene/mode run interrupted mid-production (crash, disconnect, or a
+#     segment boundary inside run_md.sh's MD_PROD_MAXH_HOURS loop) resumes
+#     from its GROMACS checkpoint (md.cpt) instead of restarting the 50 ns
+#     trajectory
 # So on Colab, just re-run this script (e.g. from a fresh notebook cell)
 # after any crash/disconnect — it picks up exactly where it stopped.
 #
 # Usage:   bash run_all.sh
-#          GENES_FILTER="TXN1,PIN1" bash run_all.sh     # subset
-#          MODES_FILTER="apo" bash run_all.sh           # apo only
-#          MD_MAXH=5 bash run_all.sh                    # cap each run's production step at 5h wall time
-#          MD_GPU=0 bash run_all.sh                      # CPU-only (GPU backend can't see a device)
+#          GENES_FILTER="TXN1,PIN1" bash run_all.sh          # subset
+#          MODES_FILTER="apo" bash run_all.sh                # apo only
+#          MD_PROD_MAXH_HOURS=5 bash run_all.sh               # cap each production segment at 5h wall time
+#          MD_DEVICE=cpu bash run_all.sh                      # CPU-only (GPU backend can't see a device)
 
 set -euo pipefail
 
@@ -100,7 +101,7 @@ tail -n +2 "$TARGETS_TSV" | while IFS=$'\t' read -r gene mode chain anchor_in pa
   wall_min=$(( (end - start) / 60 ))
 
   if [ ! -f "$run_dir/md.gro" ]; then
-    # run_md.sh stopped early (MD_MAXH limit, disconnect, or crash) without
+    # run_md.sh stopped early (segment limit, disconnect, or crash) without
     # finishing production. It checkpointed via md.cpt, so re-running this
     # script later will resume this exact target where it left off.
     echo "[partial] $gene/$mode — production not finished after ${wall_min} min, will resume next run" | tee -a "$overall_log"

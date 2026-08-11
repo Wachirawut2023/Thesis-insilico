@@ -24,7 +24,7 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud services enable compute.googleapis.com
 git clone https://github.com/Wachirawut2023/Thesis-insilico.git ~/Thesis-insilico
 cd ~/Thesis-insilico
-git checkout claude/arsenic-m6a-inhibition-model-6pwWS
+git checkout main
 ```
 
 ## 2. Provision the GPU instance (~30 sec, then 10-15 min bootstrap)
@@ -207,7 +207,7 @@ and budget matters more than convenience, **RunPod is ~$10 cheaper**.
   offloads via OpenCL, which doesn't support Volta/Turing/Ampere-or-newer
   NVIDIA GPUs for compute and silently falls back). Fix: recreate the `md`
   env pinning the CUDA build explicitly,
-  `mamba create -n md -c conda-forge -y "gromacs=2024.5=nompi_cuda*" ...`
+  `mamba create -n md -c conda-forge -y "gromacs=2026.3=nompi_cuda*" ...`
   (see `cloud-init.yaml` step 4 for the full command) — a bare
   `cudatoolkit` dependency isn't enough, the build string itself must be
   pinned.

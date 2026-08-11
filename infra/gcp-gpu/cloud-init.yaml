@@ -44,7 +44,7 @@ write_files:
       # 3. Repo
       WORK_DIR="${WORK_DIR:-/opt/Thesis-insilico}"
       REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
-      BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+      BRANCH="${BRANCH:-main}"
       if [ ! -d "$WORK_DIR" ]; then
         git clone "$REPO_URL" "$WORK_DIR"
       fi
@@ -63,7 +63,11 @@ write_files:
       # won't prefer it on its own.
       CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
       export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
-      GMX_SPEC="gromacs=2024.5=nompi_cuda*"
+      # >= 2026.3 specifically: that's the GROMACS release that added
+      # native ff19SB support (this pipeline's protein force field, see
+      # docs/md_tier3.md) -- earlier releases fail pdb2gmx with "force
+      # field 'amber19sb' not found".
+      GMX_SPEC="gromacs=2026.3=nompi_cuda*"
       if ! conda env list | grep -q '^md'; then
         mamba create -n md -c conda-forge -y \
           "$GMX_SPEC" \

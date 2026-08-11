@@ -25,7 +25,11 @@ source /opt/miniforge/etc/profile.d/conda.sh
 # explicitly, since the solver won't prefer it on its own.
 CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
 export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
-GMX_SPEC="gromacs=2024.5=nompi_cuda*"
+# >= 2026.3 specifically: that's the GROMACS release that added native
+# ff19SB support (this pipeline's protein force field, see
+# docs/md_tier3.md) -- earlier releases fail pdb2gmx with "force field
+# 'amber19sb' not found".
+GMX_SPEC="gromacs=2026.3=nompi_cuda*"
 if ! conda env list | grep -q '^md'; then
   mamba create -n md -c conda-forge -y \
     "$GMX_SPEC" \
@@ -33,6 +37,7 @@ if ! conda env list | grep -q '^md'; then
     mdanalysis \
     freesasa \
     biopython \
+    pdbfixer \
     matplotlib \
     pandas \
     numpy \
@@ -52,7 +57,7 @@ if [ ! -d /opt/Thesis-insilico ]; then
   git clone https://github.com/Wachirawut2023/Thesis-insilico.git /opt/Thesis-insilico
 fi
 cd /opt/Thesis-insilico
-git checkout claude/arsenic-m6a-inhibition-model-6pwWS
+git checkout main
 git pull
 
 chmod +x scripts/md/run_md.sh scripts/md/run_all.sh

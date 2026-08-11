@@ -32,7 +32,7 @@ IMAGE_PROJECT="${IMAGE_PROJECT:-deeplearning-platform-release}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-100}"
 DISK_TYPE="${DISK_TYPE:-pd-balanced}"
 REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
-BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+BRANCH="${BRANCH:-main}"
 
 # Auto-detect the latest Deep Learning VM CUDA image family unless the
 # user explicitly overrides via IMAGE_FAMILY env var.
@@ -89,7 +89,7 @@ echo
 tmp_user_data="$(mktemp)"
 trap 'rm -f "$tmp_user_data"' EXIT
 sed -e "s|\${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}|$REPO_URL|g" \
-    -e "s|\${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}|$BRANCH|g" \
+    -e "s|\${BRANCH:-main}|$BRANCH|g" \
     cloud-init.yaml > "$tmp_user_data"
 
 if gcloud compute instances describe "$INSTANCE_NAME" --zone="$ZONE" >/dev/null 2>&1; then

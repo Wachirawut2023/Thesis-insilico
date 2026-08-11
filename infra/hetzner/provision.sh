@@ -26,7 +26,7 @@ IMAGE="${IMAGE:-ubuntu-24.04}"
 LOCATION="${LOCATION:-nbg1}"               # Nuremberg, DE; alt: fsn1, hel1, ash, hil, sin
 SSH_KEY_NAME="${SSH_KEY_NAME:-thesis}"
 REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
-BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+BRANCH="${BRANCH:-main}"
 
 cd "$(dirname "$0")"
 
@@ -45,7 +45,7 @@ fi
 tmp_user_data="$(mktemp)"
 trap 'rm -f "$tmp_user_data"' EXIT
 sed -e "s|\${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}|$REPO_URL|g" \
-    -e "s|\${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}|$BRANCH|g" \
+    -e "s|\${BRANCH:-main}|$BRANCH|g" \
     cloud-init.yaml > "$tmp_user_data"
 
 # 3. Create or reuse the server

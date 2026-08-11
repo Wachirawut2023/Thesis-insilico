@@ -28,15 +28,16 @@ the covalent-anchor residue numbering from Tier 1-2 stays valid.
 Two MD modes are run per protein:
 
 ### A. Apo MD (50 ns)
-Protein in explicit water (TIP3P), 150 mM NaCl, AMBER ff99SB-ILDN force
-field. (Originally scoped as ff19SB; switched to ff99SB-ILDN because
-ff19SB was never ported into GROMACS' native force-field-directory format
-and isn't bundled by any stock GROMACS build, including conda-forge's —
-`pdb2gmx -ff amber19sb` fails outright with "force field not found".
-ff99SB-ILDN ships built into GROMACS, needs no extra installation, and
-remains one of the most validated general protein force fields; the
-qualitative pose-stability/SASA/RMSD readouts this tier reports are not
-sensitive to the substitution.) Standard biomolecular protocol: energy
+Protein in explicit water (OPC — the water model ff19SB was
+parameterised and validated against; GROMACS's own force-field docs
+recommend OPC/OPC3 over TIP3P for this force field), 150 mM NaCl,
+AMBER ff19SB force field. (An earlier attempt hit `pdb2gmx -ff amber19sb`
+failing with "force field not found" and fell back to ff99SB-ILDN —
+ff19SB wasn't ported into GROMACS' native force-field-directory format
+until GROMACS 2026.3. All three cloud paths — Colab, GCP/RunPod, and the
+AMD droplet — now pin/build GROMACS >= 2026.3, so ff19SB is available
+everywhere and the ff99SB-ILDN fallback is no longer needed.) Standard
+biomolecular protocol: energy
 minimisation → 100 ps NVT
 equilibration at 310 K (position restraints on heavy atoms) → 100 ps
 NPT equilibration at 1 bar → 50 ns production with 2 fs timestep,
@@ -55,7 +56,7 @@ Mg²⁺–SG distance at 2.25 ± 0.02 Å (the As–S bond length from crystal
 structures).
 
 **Why Mg²⁺ and not As(III) directly?** As(III) is not parameterised in
-AMBER ff99SB-ILDN or any standard biomolecular force field. The two paths
+AMBER ff19SB or any standard biomolecular force field. The two paths
 to "real" As MD are:
 
 1. Derive partial atomic charges via QM (e.g. RESP fitting from
@@ -145,7 +146,34 @@ In `docs/chapter_in_silico.md`:
 
 ## Cost & runtime
 
-Two provisioning paths supported:
+**Local (your own computer, CPU-only)** — no cloud provisioning, $0 cost.
+Most of Tier 3's wall time is the production `mdrun` step, and GROMACS's
+CPU-only path (Verlet scheme, thread-MPI) runs the exact same protocol as
+the GPU paths below — just slower. Reasonable if you don't mind the
+simulations running for days instead of hours, or you're only running a
+handful of genes rather than the full top-8 panel.
+
+```bash
+conda activate arsenic-m6a
+conda install -c conda-forge -c bioconda "gromacs>=2026.3" pdbfixer
+bash scripts/md/run_all.sh          # or run_md.sh for a single gene/mode
+```
+
+GROMACS >= 2026.3 specifically — that's the release that added native
+ff19SB support (see below); an older GROMACS fails pdb2gmx with "force
+field 'amber19sb' not found".
+
+`run_md.sh` auto-detects the absence of a GPU (`MD_DEVICE=auto`, the
+default — checks `nvidia-smi`/`rocminfo`) and drops the `-nb gpu -pme gpu`
+offload flags, running everything on CPU threads instead (`-nt $(nproc)`
+by default; override with `NT=<n>`). Force a path explicitly with
+`MD_DEVICE=cpu` or `MD_DEVICE=gpu` if you have a GPU locally and want to
+use it (or confirm it's actually being picked up). No infra runbook
+needed — this runs directly against your local `data/prepared/` and
+writes to `results/md/` like any other pipeline stage.
+
+Three cloud provisioning paths are also supported, if you'd rather trade
+money for wall time:
 
 **GCP `g2-standard-8` with NVIDIA L4** (recommended — same project as
 static pipeline):
@@ -171,3 +199,25 @@ projects have 0 GPU quota by default — see step 0 of the runbook).
 | **Total** | | **~$15–20** |
 
 Runbook: `infra/runpod/README.md`. New account/CLI but ~$10 cheaper.
+
+**DigitalOcean AMD GPU Droplet (MI300X)** (alternative — used to replace
+a Google Colab run that hit session-length/disconnect limits mid-panel):
+
+GROMACS's GPU offload path works unchanged on AMD; the only difference
+is GROMACS is compiled from source with HIP support against the
+droplet's ROCm stack instead of installed as a prebuilt CUDA conda
+package. Cost depends on current DO GPU Droplet pricing for MI300X.
+
+Runbook: `infra/amd-gpu/README.md`.
+
+**Known issue — production-step OOM on long runs**: on the MI300X
+droplet, `gmx mdrun`'s production step has OOM-killed 3 separate times
+(different genes/system sizes), always late in the run (83-91% of
+steps) at ~176GB RSS — consistent with an in-process memory leak in
+this GROMACS 2026.3 build tied to simulation progress rather than a
+one-off hardware hiccup. `run_md.sh` runs production in
+`MD_PROD_MAXH_HOURS`-long (default 2h) segments via `-maxh` + checkpoint
+resume, on every platform, so no single process runs long enough to
+reach the failure point — same output trajectory, just restarted
+periodically. This also happens to be exactly what makes production
+resumable after a Colab crash/disconnect.

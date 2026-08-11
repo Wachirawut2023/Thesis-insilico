@@ -45,7 +45,7 @@ write_files:
       # 2. Repo  (parameters injected by provision.sh via env-vars in startup wrapper)
       WORK_DIR="${WORK_DIR:-/opt/Thesis-insilico}"
       REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
-      BRANCH="${BRANCH:-claude/arsenic-m6a-inhibition-model-6pwWS}"
+      BRANCH="${BRANCH:-main}"
       if [ ! -d "$WORK_DIR" ]; then
         git clone "$REPO_URL" "$WORK_DIR"
       fi

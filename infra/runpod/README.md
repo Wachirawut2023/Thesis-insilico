@@ -61,7 +61,10 @@ source /opt/miniforge/etc/profile.d/conda.sh
 # the solver won't prefer it on its own.
 CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
 export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
-GMX_SPEC="gromacs=2024.5=nompi_cuda*"
+# >= 2026.3 specifically: that's the GROMACS release that added native
+# ff19SB support (this pipeline's protein force field) -- earlier
+# releases fail pdb2gmx with "force field 'amber19sb' not found".
+GMX_SPEC="gromacs=2026.3=nompi_cuda*"
 mamba create -n md -c conda-forge -y \
     "$GMX_SPEC" \
     python=3.11 \
@@ -97,7 +100,7 @@ your RTX 4090.
 # Clone the repo
 git clone https://github.com/Wachirawut2023/Thesis-insilico.git /opt/Thesis-insilico
 cd /opt/Thesis-insilico
-git checkout claude/arsenic-m6a-inhibition-model-6pwWS
+git checkout main
 
 # Pull data/prepared/ from your GCS backup
 # (alternative: re-run static pipeline stages 1-2 here — ~10 min)
