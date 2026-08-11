@@ -1,0 +1,116 @@
+# Curated functional anchor residues per target.
+# Format:
+#   <GENE>:
+#     chain: A         # default
+#     anchors:         # list of residue ids; distance from Cys-Sγ to nearest of these = functional_proximity
+#       - 395          # by integer (default chain)
+#       - {chain: B, resi: 100}
+#     description: free text
+#
+# When a target has no curated anchors (scaffolds / readers without known small-molecule pocket),
+# functional_proximity falls back to centroid distance to the bound reference ligand if present in the PDB,
+# else to the geometric centre of the largest predicted pocket (Stage 3).
+
+METTL3:
+  chain: A
+  # 377 = SAM-binding Asp377, immediately adjacent to the SAM-pocket cysteine
+  # Cys376 (the literature / C376S-palmitoylation target). 395-398 = DPPW
+  # catalytic motif. Added 377 so functional_proximity scores the true pocket
+  # residue rather than only the distal DPPW motif. Run scripts/00_verify_mettl3_cys.py
+  # to confirm the 5IL0 author<->UniProt numbering (Cys375 vs Cys376) first.
+  anchors: [377, 395, 396, 397, 398, 511, 538, 549]
+  description: SAM/SAH pocket; SAM-binding Asp377 next to pocket Cys376; DPPW catalytic motif (D395-P396-P397-W398), E494 catalytic. Cys375 is the vicinal partner of Cys376.
+
+METTL14:
+  chain: B
+  anchors: [298, 299, 300]
+  description: heterodimer interface with METTL3; pseudo-MTase.
+
+METTL16:
+  chain: A
+  anchors: [184, 185, 186, 187]
+  description: NPPF catalytic motif.
+
+FTO:
+  chain: A
+  anchors: [231, 233, 307, 322]
+  description: Fe(II) facial triad H231/D233/H307; R322 substrate.
+
+ALKBH5:
+  chain: A
+  anchors: [204, 206, 266]
+  description: Fe(II) facial triad H204/D206/H266.
+
+YTHDF1:
+  chain: A
+  anchors: [411, 465, 470]
+  description: aromatic cage W411/W465/W470 (numbering per 4RCJ).
+
+YTHDF2:
+  chain: A
+  anchors: [432, 486, 491]
+  description: aromatic cage equivalent.
+
+YTHDC1:
+  chain: A
+  anchors: [377, 428, 432]
+  description: aromatic cage W377/W428/L439 (numbering per 4R3I).
+
+# Controls
+PIN1:
+  chain: A
+  anchors: [113]
+  description: Cys113 catalytic; known As(III) target.
+
+TXN1:
+  chain: A
+  anchors: [32, 35]
+  description: CGPC active site Cys32/Cys35.
+
+GAPDH:
+  anchors: [152]
+  description: catalytic Cys152 (anchored chain-agnostic — 1U8F is a tetramer O/P/Q/R).
+
+# Writers (curated for the polish round; anchors below are best-effort
+# from conserved domain motifs in UniProt + literature; AlphaFold-model
+# numbering matches the UniProt canonical sequence)
+
+CBLL1:
+  anchors: [109, 112, 126, 129]
+  description: RING E3 ligase Zn-binding Cys cluster (CxxC...CxxC). Approximate.
+
+# Readers — extend YTHDFx aromatic cage curation
+YTHDF3:
+  anchors: [438, 492, 497]
+  description: aromatic cage W/W/W conserved with YTHDF1/2 (AF model numbering).
+
+YTHDC2:
+  anchors: [1375, 1429]
+  description: C-terminal YTH domain aromatic cage residues (AF model). Approximate.
+
+IGF2BP1:
+  anchors: [414, 415, 416, 417, 492, 493, 494, 495]
+  description: KH3 and KH4 GXXG RNA-binding loops bracketed; approximate.
+
+IGF2BP2:
+  anchors: [411, 412, 413, 414, 489, 490, 491, 492]
+  description: KH3/KH4 GXXG loops (paralog of IGF2BP1); approximate.
+
+IGF2BP3:
+  anchors: [413, 414, 415, 416, 491, 492, 493, 494]
+  description: KH3/KH4 GXXG loops; approximate.
+
+HNRNPA2B1:
+  anchors: [56, 57, 58, 59, 60, 61, 62, 63, 64, 148, 149, 150, 151, 152, 153, 154, 155, 156]
+  description: RRM1 and RRM2 RNP1 octamers — RNA-binding β3 strand residues. Approximate.
+
+HNRNPC:
+  anchors: [57, 58, 59, 60, 61, 62, 63, 64]
+  description: RRM RNP1 RNA-binding residues; approximate.
+
+# Note: WTAP, VIRMA, ZC3H13, RBM15, RBM15B are scaffold / RNA-recruiter
+# proteins without single critical catalytic residues. Their func.prox
+# remaining NA in the ranking is *biologically correct* — these are
+# interaction-surface proteins, and arsenic binding to a surface Cys on
+# a scaffold has ambiguous functional consequences without further
+# experimental work. They stay in 'binding_only' tier by design.

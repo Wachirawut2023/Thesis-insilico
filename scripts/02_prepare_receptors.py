@@ -1,0 +1,221 @@
+"""Stage 1b: clean and protonate each receptor at pH 7.4, then export PDBQT.
+
+Pipeline per structure:
+  1. Strip waters, alt-locs (keep highest occupancy), non-cofactor HETATMs.
+     Keep SAM/SAH (writers), Fe/2OG (erasers), m6A nucleotides (readers) as references.
+  2. pdb2pqr30 --ff=AMBER --with-ph=7.4 --titration-state-method=propka -> .pqr
+  3. prepare_receptor4.py -> .pdbqt
+"""
+from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from _common import AF_DIR, PDB_DIR, PREP_DIR, get_logger, load_targets
+
+LOG = get_logger("prepare")
+KEEP_HETATMS = {"SAM", "SAH", "FE", "FE2", "AKG", "2OG", "M6A", "6MA", "MG", "ZN"}
+# Every monatomic-ion .rtp entry in AMBER force fields (checked amber19sb's
+# ions.rtp directly: CA/CL/K/MG/MN/NA/ZN/FE/FE2) names its single atom
+# identically to the residue. Raw PDB depositions instead name the atom
+# after its plain element ("FE"), which only actually diverges from the
+# residue name for FE2 (Fe2+ — an AMBER oxidation-state label, not a PDB
+# element symbol) — e.g. FTO's Fe(II) cofactor is `HETATM ... FE   FE2`.
+# Left uncorrected, pdb2gmx fatal-errors ("atom FE ... not found in rtp
+# entry FE2") since it looks up expected atoms by matching the residue's
+# rtp block, not the element.
+MONATOMIC_IONS = {"FE", "FE2", "MG", "ZN"}
+
+
+def _strip_pdb(src: Path, dst: Path) -> None:
+    """Keep ATOM records and whitelisted HETATM cofactors. Deduplicate
+    alt-locs by keeping the first occurrence of each (chain, resn, resi,
+    atom) — otherwise both 'A' and 'B' altlocs leak through and look
+    like duplicate atoms with spurious vicinal pairs (e.g. GAPDH 1U8F
+    Cys152 had two SG records 2.65 Å apart)."""
+    seen_atoms: set[tuple[str, str, int, str]] = set()
+    lines_out: list[str] = []
+    with src.open() as fh:
+        for line in fh:
+            tag = line[:6]
+            if tag not in ("ATOM  ", "HETATM"):
+                if tag in ("HEADER", "TITLE ", "REMARK", "SEQRES", "TER   ", "END   "):
+                    lines_out.append(line)
+                continue
+            resn = line[17:20].strip()
+            chain = line[21]
+            try:
+                resi = int(line[22:26])
+            except ValueError:
+                continue
+            atom = line[12:16].strip()
+            if tag == "HETATM" and resn not in KEEP_HETATMS and resn != "MSE":
+                continue
+            if tag == "HETATM" and resn in MONATOMIC_IONS and atom != resn:
+                LOG.info("renaming HETATM atom %r -> %r (resn %s, resi %d) to match AMBER rtp", atom, resn, resn, resi)
+                atom = resn
+                line = line[:12] + f"{atom:<4s}" + line[16:]
+            key = (chain, resn, resi, atom)
+            if key in seen_atoms:
+                continue
+            seen_atoms.add(key)
+            # Blank the altloc column so downstream tools see a single conformer.
+            line = line[:16] + " " + line[17:]
+            lines_out.append(line)
+    dst.write_text("".join(lines_out))
+
+
+def _run(cmd: list[str], log_full_stderr: bool = False) -> bool:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            stderr = r.stderr if log_full_stderr else r.stderr[-500:]
+            LOG.warning("cmd failed: %s\nstderr: %s", " ".join(cmd), stderr)
+            return False
+        return True
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        LOG.error("cmd error: %s: %s", " ".join(cmd), exc)
+        return False
+
+
+def _protonate(stripped: Path, pqr: Path) -> bool:
+    return _run(
+        [
+            "pdb2pqr30",
+            "--ff=AMBER",
+            "--with-ph=7.4",
+            "--titration-state-method=propka",
+            "--keep-chain",
+            "--drop-water",
+            str(stripped),
+            str(pqr),
+        ],
+        log_full_stderr=True,
+    )
+
+
+# PDB element -> AutoDock atom type. Element column (PDB cols 77-78) preferred;
+# falls back to atom-name-first-char heuristic.
+_AD_TYPE_BASE = {
+    "C": "C",  "N": "N",  "O": "OA", "S": "SA",
+    "P": "P",  "H": "H",  "F": "F",
+    "MG": "Mg","FE": "Fe","ZN": "Zn","CA": "Ca","MN": "Mn","NA": "Na","K": "K",
+    "CL": "Cl","BR": "Br","I": "I",
+}
+
+
+def _ad_atom_type(atom_name: str, element: str) -> str:
+    el = (element or "").strip().upper()
+    if not el:
+        # Atom-name fallback: strip digits, take element prefix
+        nm = atom_name.strip()
+        el = nm[:2].upper() if nm[:2] in _AD_TYPE_BASE else nm[:1].upper()
+    base = _AD_TYPE_BASE.get(el, el.title())
+    # Polar H (bonded to N/O) -> HD; we can't tell topology here, but
+    # naming convention helps: H of N/O is usually named with the parent
+    # heavy-atom letter (e.g. H, HE, HZ for backbone/sidechain).
+    if base == "H" and atom_name.strip().startswith(("H", "1H", "2H", "3H")):
+        # Heuristic: backbone amide H ("H") and sidechain polar H -> HD
+        if atom_name.strip() in {"H", "HN", "HE", "HE1", "HE2", "HE21", "HE22",
+                                 "HD1", "HD2", "HD21", "HD22", "HG", "HG1",
+                                 "HH", "HH11", "HH12", "HH21", "HH22", "HZ"}:
+            return "HD"
+    return base
+
+
+def _simple_pdb_to_pdbqt(pdb: Path, pdbqt: Path) -> bool:
+    """Strict-format PDB -> PDBQT converter. Bypasses obabel (which can
+    overflow the F6.3 partial-charge field on some residues, breaking Vina).
+    Charges are written as 0.000 — Vina works fine without Gasteiger charges
+    for our relative-ranking use case; the As(III) ligand is metal-like and
+    score is dominated by vdW/sterics. Atom types derived from PDB element
+    column."""
+    out_lines = ["REMARK  Receptor PDBQT generated by simple_pdb_to_pdbqt\n"]
+    n_atoms = 0
+    with pdb.open() as fh:
+        for line in fh:
+            if not line.startswith(("ATOM  ", "HETATM")):
+                continue
+            atom_name = line[12:16]
+            element = line[76:78] if len(line) >= 78 else ""
+            ad_type = _ad_atom_type(atom_name, element)
+            # Reconstruct strict PDBQT line: keep cols 1-54 (record, serial,
+            # name, altloc, resname, chain, resseq, icode, x/y/z), then
+            # standardised occupancy/tempf/charge/type.
+            head = line[:54]
+            # Pad head to exactly 54 chars in case the input line was short
+            head = head.ljust(54)
+            # Strict PDBQT cols 55-79:
+            #   55-60 occupancy (F6.2) "  1.00"
+            #   61-66 tempfactor (F6.2) "  0.00"
+            #   67-70 padding (4 spaces)
+            #   71-76 partial charge (F6.3) " 0.000"
+            #   77    space
+            #   78-79 atom type (left-justified, 2 chars)
+            out_lines.append(
+                f"{head}  1.00  0.00    {0.0:>6.3f} {ad_type:<2s}\n"
+            )
+            n_atoms += 1
+    if n_atoms == 0:
+        return False
+    pdbqt.write_text("".join(out_lines))
+    return True
+
+
+def _to_pdbqt(src_pdb: Path, pqr: Path, pdbqt: Path) -> bool:
+    """Write PDBQT for the receptor. Prefer our simple writer (strict format,
+    no charge overflow). Try meeko's mk_prepare_receptor.py if available as a
+    higher-quality alternative; fall back to obabel only as last resort."""
+    if shutil.which("mk_prepare_receptor.py"):
+        if _run([
+            "mk_prepare_receptor.py",
+            "--read_pdb", str(src_pdb),
+            "--write_pdbqt", str(pdbqt),
+        ]):
+            return pdbqt.exists() and pdbqt.stat().st_size > 0
+    if _simple_pdb_to_pdbqt(src_pdb, pdbqt):
+        return True
+    # Last resort
+    return _run(["obabel", str(pqr if pqr.exists() else src_pdb), "-O", str(pdbqt), "-xr"])
+
+
+def _pick_input(gene: str, uniprot: str, primary_pdb: str) -> Path | None:
+    if primary_pdb and primary_pdb != "-":
+        cand = PDB_DIR / f"{primary_pdb}.pdb"
+        if cand.exists():
+            return cand
+    af = AF_DIR / f"AF-{uniprot}.pdb"
+    return af if af.exists() else None
+
+
+def main() -> int:
+    PREP_DIR.mkdir(parents=True, exist_ok=True)
+    targets = load_targets()
+    ok = 0
+    for t in targets:
+        src = _pick_input(t.gene, t.uniprot, t.pdb_primary)
+        if src is None:
+            LOG.warning("no input for %s (%s)", t.gene, t.uniprot)
+            continue
+        stripped = PREP_DIR / f"{t.gene}.clean.pdb"
+        pqr = PREP_DIR / f"{t.gene}.pqr"
+        pdbqt = PREP_DIR / f"{t.gene}.pdbqt"
+        _strip_pdb(src, stripped)
+        if not _protonate(stripped, pqr):
+            LOG.warning("pdb2pqr30 failed for %s; falling back to obabel -p (no pKa)", t.gene)
+            if _run(["obabel", str(stripped), "-O", str(pqr), "-p", "7.4"]):
+                LOG.info("obabel fallback wrote %s", pqr.name)
+            else:
+                LOG.warning("obabel fallback also failed for %s; will use unprotonated PDB", t.gene)
+        if not _to_pdbqt(stripped, pqr, pdbqt):
+            LOG.error("PDBQT conversion failed for %s", t.gene)
+            continue
+        ok += 1
+    LOG.info("prepared %d / %d", ok, len(targets))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

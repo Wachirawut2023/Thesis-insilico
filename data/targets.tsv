@@ -1,0 +1,26 @@
+family	subfamily	gene	uniprot	pdb_primary	pdb_alt	role	notes
+writer	core_MTase	METTL3	Q86U44	5IL0	5IL1,5K7M,5K7U,5K7W,6TTS,6TTT	catalytic	N-terminal CCCH zinc fingers + MTase domain; DPPW catalytic motif
+writer	core_MTase	METTL14	Q9HCE5	5IL0	5IL1	pseudo-catalytic	heterodimer with METTL3; RNA binding interface
+writer	adapter	WTAP	Q15007	6TTS	-	scaffold	binds METTL3/14; mostly disordered, use AF model
+writer	scaffold	VIRMA	Q69YN4	-	-	scaffold	large scaffold, AF model only
+writer	scaffold	ZC3H13	Q5T200	-	-	scaffold	Zn-finger, AF model only
+writer	RNA_recruiter	RBM15	Q96T37	-	-	RNA targeting	AF model
+writer	RNA_recruiter	RBM15B	Q5XKL5	-	-	RNA targeting	AF model
+writer	E3_like	CBLL1	Q75N03	-	-	complex assembly	Hakai; RING domain, AF model
+writer	standalone_MTase	METTL16	Q86W50	6B91	6DU4,6DU5	catalytic	U6 snRNA / MAT2A 3'UTR methylation
+eraser	aKG_Fe_dioxygenase	FTO	Q9C0B1	3LFM	4IDZ,5ZMD,4QHO	catalytic	Fe(II)/2OG demethylase; HxD...H facial triad
+eraser	aKG_Fe_dioxygenase	ALKBH5	Q6P6C2	4O61	4OCT,4NRO,4NJ4	catalytic	Fe(II)/2OG demethylase
+reader	YTH	YTHDF1	Q9BYJ9	4RCJ	-	cytoplasmic	m6A aromatic cage W411/W465/W470
+reader	YTH	YTHDF2	Q9Y5A9	4RCM	6OHP	cytoplasmic	mRNA decay
+reader	YTH	YTHDF3	Q7Z739	-	-	cytoplasmic	AF model
+reader	YTH	YTHDC1	Q96MU7	4R3I	-	nuclear	splicing regulation
+reader	YTH	YTHDC2	Q9H6S0	6K6U	-	helicase+YTH	partial PDB; combine with AF
+reader	KH	IGF2BP1	Q9NZI8	6QEY	-	cytoplasmic	mRNA stability; KH3/4 di-domain
+reader	KH	IGF2BP2	Q9Y6M1	6ROL	-	cytoplasmic	KH di-domain
+reader	KH	IGF2BP3	O00425	-	-	cytoplasmic	AF model
+reader	hnRNP	HNRNPA2B1	P22626	5HO4	-	nuclear	splicing
+reader	hnRNP	HNRNPC	P07910	2MXY	-	nuclear	RNA structure switch reader
+control_pos	-	PIN1	Q13526	1PIN	-	control	known As(III) target; reactive Cys113
+control_pos	-	TXN1	P10599	1ERT	-	control	thioredoxin; CxxC active site, As(III) target
+control_pos	-	GAPDH	P04406	1U8F	-	control	catalytic Cys152; arsenic-binding proteome hit
+control_neg	-	SH3_SRC	P12931	1FMK	-	control	SH3 domain; no surface Cys cluster expected

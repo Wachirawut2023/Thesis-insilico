@@ -1,0 +1,83 @@
+#cloud-config
+# GCP Compute Engine bootstrap for the As(III)-m6A pipeline.
+# Attached via --metadata-from-file user-data=cloud-init.yaml in provision.sh.
+
+package_update: true
+package_upgrade: false
+packages:
+  - build-essential
+  - git
+  - curl
+  - wget
+  - bzip2
+  - ca-certificates
+  - tmux
+  - htop
+  - rsync
+  - unzip
+  - jq
+
+write_files:
+  - path: /etc/profile.d/conda.sh
+    permissions: "0755"
+    content: |
+      export PATH="/opt/miniforge/bin:$PATH"
+      [ -f /opt/miniforge/etc/profile.d/conda.sh ] && source /opt/miniforge/etc/profile.d/conda.sh
+
+  - path: /opt/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      exec > >(tee -a /var/log/bootstrap.log) 2>&1
+      echo "[bootstrap] starting $(date -Is)"
+
+      # 1. Miniforge (conda + mamba, conda-forge default)
+      if [ ! -d /opt/miniforge ]; then
+        curl -L -o /tmp/miniforge.sh \
+          "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+        bash /tmp/miniforge.sh -b -p /opt/miniforge
+        rm /tmp/miniforge.sh
+      fi
+      export PATH="/opt/miniforge/bin:$PATH"
+      source /opt/miniforge/etc/profile.d/conda.sh
+
+      # 2. Repo  (parameters injected by provision.sh via env-vars in startup wrapper)
+      WORK_DIR="${WORK_DIR:-/opt/Thesis-insilico}"
+      REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
+      BRANCH="${BRANCH:-main}"
+      if [ ! -d "$WORK_DIR" ]; then
+        git clone "$REPO_URL" "$WORK_DIR"
+      fi
+      cd "$WORK_DIR"
+      git fetch origin
+      git checkout "$BRANCH"
+      git pull --ff-only
+
+      # 3. Conda env
+      if ! conda env list | grep -q '^arsenic-m6a'; then
+        mamba env create -f env/environment.yml
+      else
+        mamba env update -f env/environment.yml
+      fi
+
+      # 4. Ligand prep (idempotent)
+      conda activate arsenic-m6a
+      bash ligands/prepare_as3.sh || true
+
+      # 5. Make /opt/Thesis-insilico accessible to the gcloud-ssh login user
+      chmod -R a+rX "$WORK_DIR"
+
+      echo "[bootstrap] done $(date -Is)"
+
+  - path: /root/.tmux.conf
+    permissions: "0644"
+    content: |
+      set -g history-limit 50000
+      set -g mouse on
+
+runcmd:
+  - [ bash, -lc, "bash /opt/bootstrap.sh" ]
+  - [ bash, -lc, "echo bootstrap-complete > /opt/.bootstrap-complete" ]
+
+final_message: "Cloud-init complete after $UPTIME seconds. Bootstrap log: /var/log/bootstrap.log"

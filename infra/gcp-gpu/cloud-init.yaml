@@ -1,0 +1,116 @@
+#cloud-config
+# GCP GPU instance bootstrap for Tier-3 MD on top 8 hits.
+# Designed to work with the Deep Learning VM image (CUDA + NVIDIA drivers
+# pre-installed); we only need to add GROMACS and clone the repo.
+
+package_update: true
+package_upgrade: false
+packages:
+  - build-essential
+  - git
+  - curl
+  - tmux
+  - htop
+  - rsync
+  - unzip
+  - jq
+
+write_files:
+  - path: /opt/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Note: deliberately NOT set -u here — the conda-forge GROMACS package
+      # sources GMXRC.bash on activation, which references variables that
+      # may be unset (GMXLDLIB etc.) under strict mode. set -e + pipefail is
+      # enough to catch real failures.
+      set -eo pipefail
+      exec > >(tee -a /var/log/bootstrap.log) 2>&1
+      echo "[gpu-bootstrap] starting $(date -Is)"
+
+      # 1. Verify GPU + driver are available (Deep Learning image should already)
+      nvidia-smi || { echo "ERROR: NVIDIA driver not loaded"; exit 1; }
+
+      # 2. Miniforge (lighter than the bundled Anaconda; gives mamba)
+      if [ ! -d /opt/miniforge ]; then
+        curl -L -o /tmp/miniforge.sh \
+          "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+        bash /tmp/miniforge.sh -b -p /opt/miniforge
+        rm /tmp/miniforge.sh
+      fi
+      export PATH="/opt/miniforge/bin:$PATH"
+      source /opt/miniforge/etc/profile.d/conda.sh
+
+      # 3. Repo
+      WORK_DIR="${WORK_DIR:-/opt/Thesis-insilico}"
+      REPO_URL="${REPO_URL:-https://github.com/Wachirawut2023/Thesis-insilico.git}"
+      BRANCH="${BRANCH:-main}"
+      if [ ! -d "$WORK_DIR" ]; then
+        git clone "$REPO_URL" "$WORK_DIR"
+      fi
+      cd "$WORK_DIR"
+      git fetch origin
+      git checkout "$BRANCH"
+      git pull --ff-only
+
+      # 4. MD environment — GROMACS + analysis libs. IMPORTANT: conda-forge's
+      # *plain* "nompi" gromacs build offloads to GPU via OpenCL, and
+      # GROMACS' OpenCL backend does not support Volta/Turing/Ampere-or-newer
+      # NVIDIA GPUs (the L4 included) for compute -- gmx enumerates the card,
+      # reports it "incompatible", and silently drops to CPU-only with no
+      # error. conda-forge also ships a real CUDA-enabled build (build
+      # string "nompi_cuda*"); pin it explicitly below, since the solver
+      # won't prefer it on its own.
+      CUDA_VER=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -1)
+      export CONDA_OVERRIDE_CUDA="${CUDA_VER:-12.4}"
+      # >= 2026.3 specifically: that's the GROMACS release that added
+      # native ff19SB support (this pipeline's protein force field, see
+      # docs/md_tier3.md) -- earlier releases fail pdb2gmx with "force
+      # field 'amber19sb' not found".
+      GMX_SPEC="gromacs=2026.3=nompi_cuda*"
+      if ! conda env list | grep -q '^md'; then
+        mamba create -n md -c conda-forge -y \
+          "$GMX_SPEC" \
+          python=3.11 \
+          mdanalysis \
+          freesasa \
+          biopython \
+          pdbfixer \
+          matplotlib \
+          pandas \
+          numpy \
+          scipy \
+          tqdm \
+          pyyaml
+      fi
+
+      # 5. Activate. GROMACS post-activate hook references unset vars on
+      # first source; tolerate with `|| true` rather than abort the whole
+      # bootstrap.
+      conda activate md || true
+
+      # 6. Verify GROMACS actually got the CUDA build -- fail loudly rather
+      # than silently running CPU-only for the next ~30 GPU-hours.
+      gmx --version 2>&1 | grep -E "GROMACS|GPU support|CUDA" || true
+      gmx --version 2>&1 | grep -qi "GPU support:.*CUDA" || {
+        echo "ERROR: gromacs env is not CUDA-enabled (spec was $GMX_SPEC)."
+        echo "Check https://anaconda.org/conda-forge/gromacs/files for the current nompi_cuda* build and bump GMX_SPEC."
+        exit 1
+      }
+
+      # 7. Permissions for gcloud-ssh user
+      chmod -R a+rX "$WORK_DIR"
+
+      echo "[gpu-bootstrap] done $(date -Is)"
+
+  - path: /root/.tmux.conf
+    permissions: "0644"
+    content: |
+      set -g history-limit 50000
+      set -g mouse on
+
+runcmd:
+  - [ bash, -lc, "bash /opt/bootstrap.sh" ]
+  - [ bash, -lc, "echo bootstrap-complete > /opt/.bootstrap-complete" ]
+
+final_message: "GPU bootstrap complete after $UPTIME seconds. See /var/log/bootstrap.log"

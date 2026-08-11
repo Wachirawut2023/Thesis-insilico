@@ -1,0 +1,9 @@
+; ions.mdp — placeholder run for gmx genion
+; (genion needs a .tpr to know charge; this mdp is just a dummy)
+integrator      = steep
+nsteps          = 1
+cutoff-scheme   = Verlet
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+pbc             = xyz
