@@ -1,0 +1,86 @@
+gene	anchor_chain	anchor_resi	n_vicinal_partners	bidentate_feasible	tridentate_feasible	binding_mode	partner_tags	functional_proximity_A	thiolate_bonus	covalent_score	min_rotamer_sg_sg_A	bidentate_feasible_rotamer
+METTL3	A	375	1	0	0	monodentate		3.45	0.0	2.0	5.16	0
+METTL14	A	375	1	0	0	monodentate		34.90	0.0	0.0	5.16	0
+VIRMA	A	33	0	0	0	monodentate		NA	0.0	0.0	NA	0
+VIRMA	A	353	0	0	0	monodentate		NA	0.0	0.0	NA	0
+VIRMA	A	770	0	0	0	monodentate		NA	0.0	0.0	NA	0
+VIRMA	A	781	0	0	0	monodentate		NA	0.0	0.0	NA	0
+VIRMA	A	1008	1	1	0	bidentate	A938	NA	0.0	2.0	1.67	1
+VIRMA	A	1170	0	0	0	monodentate		NA	0.0	0.0	NA	0
+VIRMA	A	1412	1	0	0	monodentate		NA	0.0	0.0	3.59	1
+VIRMA	A	1413	1	0	0	monodentate		NA	0.0	0.0	3.59	1
+VIRMA	A	1559	1	0	0	monodentate		NA	0.0	0.0	2.54	1
+VIRMA	A	1560	1	0	0	monodentate		NA	0.0	0.0	2.54	1
+ZC3H13	A	1046	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1160	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1390	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1549	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1591	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1592	1	1	0	bidentate	A1596	NA	0.0	2.0	3.54	1
+ZC3H13	A	1596	1	1	0	bidentate	A1592	NA	0.0	2.0	3.54	1
+ZC3H13	A	1643	0	0	0	monodentate		NA	0.0	0.0	NA	0
+ZC3H13	A	1666	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15	A	23	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15	A	667	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15	A	785	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	4	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	21	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	31	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	66	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	154	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	160	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	204	1	0	0	monodentate		NA	0.0	0.0	3.01	1
+RBM15B	A	205	1	0	0	monodentate		NA	0.0	0.0	3.01	1
+RBM15B	A	238	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	485	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	569	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	719	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	742	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	765	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	824	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	842	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1008	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1028	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1048	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1065	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1071	1	0	0	monodentate		NA	0.0	0.0	5.12	0
+RBM15B	A	1072	1	0	0	monodentate		NA	0.0	0.0	5.12	0
+RBM15B	A	1108	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1141	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1148	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1201	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1288	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1293	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1425	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1445	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1484	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1499	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1508	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1584	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1643	0	0	0	monodentate		NA	0.0	0.0	NA	0
+RBM15B	A	1777	0	0	0	monodentate		NA	0.0	0.0	NA	0
+CBLL1	A	73	0	0	0	monodentate		16.66	0.0	0.0	NA	0
+CBLL1	A	158	0	0	0	monodentate		8.68	0.0	1.0	NA	0
+CBLL1	A	172	1	1	0	bidentate	A166	8.78	0.0	2.5	0.93	1
+METTL16	A	57	0	0	0	monodentate		16.33	0.0	0.0	NA	0
+METTL16	A	138	0	0	0	monodentate		9.21	0.0	1.0	NA	0
+METTL16	A	253	0	0	0	monodentate		11.70	0.0	1.0	NA	0
+METTL16	A	276	0	0	0	monodentate		14.34	0.0	0.0	NA	0
+FTO	A	249	0	0	0	monodentate		18.70	0.0	0.0	NA	0
+FTO	A	326	1	1	0	bidentate	A104	9.18	0.0	3.0	2.81	1
+FTO	A	346	0	0	0	monodentate		42.59	0.0	0.0	NA	0
+FTO	A	397	0	0	0	monodentate		24.03	0.0	0.0	NA	0
+ALKBH5	A	200	0	0	0	monodentate		9.40	0.0	1.0	NA	0
+ALKBH5	B	200	0	0	0	monodentate		9.49	0.0	1.0	NA	0
+YTHDF1	A	427	0	0	0	monodentate		18.66	0.0	0.0	NA	0
+IGF2BP3	A	194	0	0	0	monodentate		34.55	0.0	0.0	NA	0
+PIN1	A	113	0	0	0	monodentate		0.00	0.0	2.0	NA	0
+TXN1	A	32	1	1	0	bidentate	A35	0.00	0.0	4.0	0.69	1
+TXN1	A	69	0	0	0	monodentate		15.23	0.0	0.0	NA	0
+TXN1	A	73	0	0	0	monodentate		9.08	0.0	1.0	NA	0
+GAPDH	O	152	0	0	0	monodentate		0.00	0.0	2.0	NA	0
+GAPDH	P	152	0	0	0	monodentate		0.00	0.0	2.0	NA	0
+GAPDH	Q	152	0	0	0	monodentate		0.00	0.0	2.0	NA	0
+GAPDH	R	152	0	0	0	monodentate		0.00	0.0	2.0	NA	0
+SH3_SRC	A	277	0	0	0	monodentate		NA	0.0	0.0	NA	0
+SH3_SRC	A	496	0	0	0	monodentate		NA	0.0	0.0	NA	0
