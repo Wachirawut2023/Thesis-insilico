@@ -102,3 +102,15 @@ gcloud compute instances delete as-m6a --zone=us-central1-a --quiet
 **Hetzner (cheapest list price, no free credit)** — `CCX33`, 8 dedicated
 AMD EPYC vCPU, €0.073/hr → ~€0.50 / run. Runbook:
 [`infra/hetzner/README.md`](infra/hetzner/README.md).
+
+**GitHub Actions (free, no cloud account needed)** — Tier 1-2 (stages 00-08)
+can also run on GitHub-hosted runners via
+[`.github/workflows/tier1-2-pipeline.yml`](.github/workflows/tier1-2-pipeline.yml).
+Trigger it manually from the Actions tab (`workflow_dispatch`), starting with
+`target_set: smoke` to validate the toolchain, then `target_set: all` for the
+full panel. Stages 03-06 checkpoint per-gene and results/ is committed back to
+the branch after every run, so — since a single GitHub-hosted job is capped at
+6h — the full run may need a few re-dispatches to finish; each one resumes
+from the previous run's checkpoints instead of restarting. Once Tier 1-2's
+results are on the branch, only Tier 3 (MD, see `docs/md_tier3.md`) needs a
+GPU instance.
